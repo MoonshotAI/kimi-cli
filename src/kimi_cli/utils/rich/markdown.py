@@ -202,13 +202,11 @@ class Heading(TextElement):
         text.justify = "left"
         width = max(1, text.cell_len)
 
-        if self.tag == "h1":
-            underline = Text("═" * width)
-            underline.stylize("markdown.h1.underline")
-            yield text
-            yield underline
-        else:
-            yield text
+        yield text
+        underline_char = "═" if self.tag == "h1" else "─"
+        underline = Text(underline_char * width)
+        underline.stylize(self.style_name)
+        yield underline
 
 
 class CodeBlock(TextElement):
@@ -294,7 +292,7 @@ class TableElement(MarkdownElement):
         return False
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
-        table = Table(box=box.SIMPLE_HEAVY, show_edge=False)
+        table = Table(box=box.SQUARE, show_edge=True)
 
         if self.header is not None and self.header.row is not None:
             for column in self.header.row.cells:

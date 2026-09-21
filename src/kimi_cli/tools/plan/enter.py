@@ -37,20 +37,22 @@ class EnterPlanMode(CallableTool2[Params]):
         self._toggle_callback: Callable[[], Awaitable[bool]] | None = None
         self._plan_file_path_getter: Callable[[], Path | None] | None = None
         self._plan_mode_checker: Callable[[], bool] | None = None
-        self._is_yolo: Callable[[], bool] | None = None
+        self._is_auto_approve: Callable[[], bool] | None = None
 
     def bind(
         self,
         toggle_callback: Callable[[], Awaitable[bool]],
         plan_file_path_getter: Callable[[], Path | None],
         plan_mode_checker: Callable[[], bool],
+        is_auto_approve: Callable[[], bool] | None = None,
+        *,
         is_yolo: Callable[[], bool] | None = None,
     ) -> None:
         """Late-bind soul callbacks after KimiSoul is constructed."""
         self._toggle_callback = toggle_callback
         self._plan_file_path_getter = plan_file_path_getter
         self._plan_mode_checker = plan_mode_checker
-        self._is_yolo = is_yolo
+        self._is_auto_approve = is_auto_approve or is_yolo
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -67,16 +69,21 @@ class EnterPlanMode(CallableTool2[Params]):
                 brief="Not initialized",
             )
 
-        # In yolo mode, auto-approve entering plan mode
-        if self._is_yolo and self._is_yolo():
+        # Auto-approve entering plan mode when approvals are bypassed.
+        if self._is_auto_approve and self._is_auto_approve():
+            from kimi_cli.telemetry import track
+
+            track("plan_enter_resolved", outcome="auto_approved")
             await self._toggle_callback()
             plan_path = self._plan_file_path_getter()
             return ToolReturnValue(
                 is_error=False,
                 output=(
-                    f"Plan mode activated (auto-approved in non-interactive mode).\n"
+                    f"Plan mode activated (auto-approved).\n"
                     f"Plan file: {plan_path}\n"
-                    f"Workflow: explore with Glob/Grep/ReadFile → design approach → "
+                    f"Workflow: identify key questions about the codebase → "
+                    f"use Agent(subagent_type='explore') to investigate if needed → "
+                    f"design approach → "
                     f"modify the plan file with WriteFile or StrReplaceFile "
                     f"(create it with WriteFile first if it does not exist) → "
                     f"call ExitPlanMode.\n"
@@ -139,6 +146,9 @@ class EnterPlanMode(CallableTool2[Params]):
             )
 
         if not answers:
+            from kimi_cli.telemetry import track
+
+            track("plan_enter_resolved", outcome="dismissed")
             return ToolReturnValue(
                 is_error=False,
                 output="User dismissed without choosing. Proceed with implementation directly.",
@@ -149,6 +159,9 @@ class EnterPlanMode(CallableTool2[Params]):
         # Parse user choice — exact match on option label
         chose_yes = any(v == "Yes" for v in answers.values())
         if chose_yes:
+            from kimi_cli.telemetry import track
+
+            track("plan_enter_resolved", outcome="accepted")
             await self._toggle_callback()
             plan_path = self._plan_file_path_getter()
             return ToolReturnValue(
@@ -156,7 +169,9 @@ class EnterPlanMode(CallableTool2[Params]):
                 output=(
                     f"Plan mode activated. You MUST NOT edit code files — only read and plan.\n"
                     f"Plan file: {plan_path}\n"
-                    f"Workflow: explore with Glob/Grep/ReadFile → design approach → "
+                    f"Workflow: identify key questions about the codebase → "
+                    f"use Agent(subagent_type='explore') to investigate if needed → "
+                    f"design approach → "
                     f"modify the plan file with WriteFile or StrReplaceFile "
                     f"(create it with WriteFile first if it does not exist) → "
                     f"call ExitPlanMode.\n"
@@ -168,6 +183,9 @@ class EnterPlanMode(CallableTool2[Params]):
                 display=[BriefDisplayBlock(text="Plan mode on")],
             )
         else:
+            from kimi_cli.telemetry import track
+
+            track("plan_enter_resolved", outcome="declined")
             return ToolReturnValue(
                 is_error=False,
                 output=(

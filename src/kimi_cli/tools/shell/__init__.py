@@ -15,6 +15,8 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.display import BackgroundTaskDisplayBlock, ShellDisplayBlock
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.environment import Environment
+from kimi_cli.utils.logging import logger
+from kimi_cli.utils.shell_quoting import rewrite_windows_null_redirect
 from kimi_cli.utils.subprocess_env import get_noninteractive_env
 
 MAX_FOREGROUND_TIMEOUT = 5 * 60
@@ -22,7 +24,7 @@ MAX_BACKGROUND_TIMEOUT = 24 * 60 * 60
 
 
 class Params(BaseModel):
-    command: str = Field(description="The bash command to execute.")
+    command: str = Field(description="The command to execute.")
     timeout: int = Field(
         description=(
             "The timeout in seconds for the command to execute. "
@@ -60,17 +62,20 @@ class Shell(CallableTool2[Params]):
     params: type[Params] = Params
 
     def __init__(self, approval: Approval, environment: Environment, runtime: Runtime):
-        is_powershell = environment.shell_name == "Windows PowerShell"
         super().__init__(
             description=load_desc(
-                Path(__file__).parent / ("powershell.md" if is_powershell else "bash.md"),
+                Path(__file__).parent / "bash.md",
                 {"SHELL": f"{environment.shell_name} (`{environment.shell_path}`)"},
             )
         )
         self._approval = approval
-        self._is_powershell = is_powershell
         self._shell_path = environment.shell_path
+        self._on_windows = environment.os_kind == "Windows"
         self._runtime = runtime
+
+    def _preprocess_command(self, command: str) -> str:
+        """Apply platform-specific defensive rewrites before execution."""
+        return rewrite_windows_null_redirect(command, on_windows=self._on_windows)
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -82,14 +87,16 @@ class Shell(CallableTool2[Params]):
         if params.run_in_background:
             return await self._run_in_background(params)
 
+        command = self._preprocess_command(params.command)
+
         result = await self._approval.request(
             self.name,
             "run command",
-            f"Run command `{params.command}`",
+            f"Run command `{command}`",
             display=[
                 ShellDisplayBlock(
-                    language="powershell" if self._is_powershell else "bash",
-                    command=params.command,
+                    language="bash",
+                    command=command,
                 )
             ],
         )
@@ -105,21 +112,33 @@ class Shell(CallableTool2[Params]):
             builder.write(line_str)
 
         try:
-            exitcode = await self._run_shell_command(
-                params.command, stdout_cb, stderr_cb, params.timeout
-            )
+            exitcode = await self._run_shell_command(command, stdout_cb, stderr_cb, params.timeout)
 
             if exitcode == 0:
                 return builder.ok("Command executed successfully.")
             else:
+                brief = f"Failed with exit code: {exitcode}"
+                tail = builder.tail()
+                if tail:
+                    brief += f"\n{tail}"
                 return builder.error(
                     f"Command failed with exit code: {exitcode}.",
-                    brief=f"Failed with exit code: {exitcode}",
+                    brief=brief,
                 )
         except TimeoutError:
             return builder.error(
                 f"Command killed by timeout ({params.timeout}s)",
                 brief=f"Killed by timeout ({params.timeout}s)",
+            )
+        except Exception as e:
+            logger.error(
+                "Shell command execution failed: {command}: {error}",
+                command=params.command,
+                error=e,
+            )
+            return builder.error(
+                f"Command execution failed: {e}",
+                brief="Execution failed",
             )
 
     async def _run_in_background(self, params: Params) -> ToolReturnValue:
@@ -130,14 +149,16 @@ class Shell(CallableTool2[Params]):
                 brief="No tool call context",
             )
 
+        command = self._preprocess_command(params.command)
+
         result = await self._approval.request(
             self.name,
             "run background command",
-            f"Run background command `{params.command}`",
+            f"Run background command `{command}`",
             display=[
                 ShellDisplayBlock(
-                    language="powershell" if self._is_powershell else "bash",
-                    command=params.command,
+                    language="bash",
+                    command=command,
                 )
             ],
         )
@@ -146,15 +167,20 @@ class Shell(CallableTool2[Params]):
 
         try:
             view = self._runtime.background_tasks.create_bash_task(
-                command=params.command,
+                command=command,
                 description=params.description.strip(),
                 timeout_s=params.timeout,
                 tool_call_id=tool_call.id,
-                shell_name="Windows PowerShell" if self._is_powershell else "bash",
+                shell_name="bash",
                 shell_path=str(self._shell_path),
                 cwd=str(self._runtime.session.work_dir),
             )
         except Exception as exc:
+            logger.error(
+                "Failed to start background shell task: {command}: {error}",
+                command=params.command,
+                error=exc,
+            )
             builder = ToolResultBuilder()
             return builder.error(f"Failed to start background task: {exc}", brief="Start failed")
 
@@ -207,7 +233,12 @@ class Shell(CallableTool2[Params]):
                 else:
                     break
 
-        process = await kaos.exec(*self._shell_args(command), env=get_noninteractive_env())
+        env = get_noninteractive_env()
+        # Override SHELL so commands that read $SHELL see the bash we're actually
+        # running, not an empty/stale value inherited from the parent (most visible
+        # on Windows, where the parent's SHELL is typically empty or PowerShell).
+        env["SHELL"] = str(self._shell_path)
+        process = await kaos.exec(*self._shell_args(command), env=env)
 
         # Close stdin immediately so interactive prompts (e.g. git password) get
         # EOF instead of hanging forever waiting for input that will never come.
@@ -230,6 +261,4 @@ class Shell(CallableTool2[Params]):
             raise
 
     def _shell_args(self, command: str) -> tuple[str, ...]:
-        if self._is_powershell:
-            return (str(self._shell_path), "-command", command)
         return (str(self._shell_path), "-c", command)

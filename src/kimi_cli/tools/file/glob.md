@@ -1,4 +1,8 @@
 Find files and directories using glob patterns. This tool supports standard glob syntax like `*`, `?`, and `**` for recursive searches.
+{% if WINDOWS_PATH_HINT %}
+
+${WINDOWS_PATH_HINT}
+{% endif %}
 
 **When to use:**
 - Find files matching specific patterns (e.g., all Python files: `*.py`)

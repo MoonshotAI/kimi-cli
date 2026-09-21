@@ -433,3 +433,34 @@ async def test_openai_responses_with_thinking():
             pass
         body = json.loads(mock.calls.last.request.content.decode())
         assert body["reasoning"] == snapshot({"effort": "high", "summary": "auto"})
+
+
+async def test_openai_responses_with_thinking_xhigh():
+    """with_thinking("xhigh") must pass xhigh through — OpenAI supports it
+    natively for models after gpt-5.1-codex-max. We use a model name from
+    that supported set so the test aligns with its own rationale."""
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/responses").mock(return_value=Response(200, json=make_response()))
+        provider = OpenAIResponses(
+            model="gpt-5.1-codex-max", api_key="test-key", stream=False
+        ).with_thinking("xhigh")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["reasoning"] == snapshot({"effort": "xhigh", "summary": "auto"})
+
+
+async def test_openai_responses_with_thinking_max_clamps_to_xhigh():
+    """Kosong's "max" is Anthropic-specific; for OpenAI it clamps to xhigh
+    (their highest level) rather than falling back to high."""
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/responses").mock(return_value=Response(200, json=make_response()))
+        provider = OpenAIResponses(
+            model="gpt-5.1-codex-max", api_key="test-key", stream=False
+        ).with_thinking("max")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["reasoning"] == snapshot({"effort": "xhigh", "summary": "auto"})

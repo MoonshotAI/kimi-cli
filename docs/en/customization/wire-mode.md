@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.7`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.10`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -89,6 +89,8 @@ interface InitializeParams {
   external_tools?: ExternalTool[]
   /** Client capabilities, optional */
   capabilities?: ClientCapabilities
+  /** Hook subscriptions, optional. Declares hook events the client wants to handle */
+  hooks?: WireHookSubscription[]
 }
 
 interface ClientCapabilities {
@@ -96,6 +98,17 @@ interface ClientCapabilities {
   supports_question?: boolean
   /** Whether the client supports plan mode */
   supports_plan_mode?: boolean
+}
+
+interface WireHookSubscription {
+  /** Subscription ID, referenced in HookRequest */
+  id: string
+  /** Event type to subscribe to, e.g., 'PreToolUse', 'Stop' */
+  event: string
+  /** Regex filter, empty string matches all */
+  matcher?: string
+  /** Timeout for client response in seconds, default 30 */
+  timeout?: number
 }
 
 interface ClientInfo {
@@ -124,6 +137,15 @@ interface InitializeResult {
   external_tools?: ExternalToolsResult
   /** Server capabilities */
   capabilities?: ServerCapabilities
+  /** Hook system info, optional */
+  hooks?: HooksInfo
+}
+
+interface HooksInfo {
+  /** List of all hook event types supported by the server */
+  supported_events: string[]
+  /** Currently configured hooks statistics, key is event type, value is count */
+  configured: Record<string, number>
 }
 
 interface ServerCapabilities {
@@ -467,6 +489,7 @@ type Event =
   | TurnEnd
   | StepBegin
   | StepInterrupted
+  | StepRetry
   | CompactionBegin
   | CompactionEnd
   | StatusUpdate
@@ -476,11 +499,15 @@ type Event =
   | ToolResult
   | ApprovalResponse
   | SubagentEvent
+  | BtwBegin
+  | BtwEnd
   | SteerInput
   | PlanDisplay
+  | HookTriggered
+  | HookResolved
 
 /** Requests: sent via request method, require response */
-type Request = ApprovalRequest | ToolCallRequest | QuestionRequest
+type Request = ApprovalRequest | ToolCallRequest | QuestionRequest | HookRequest
 ```
 
 ### `TurnBegin`
@@ -522,6 +549,31 @@ interface StepBegin {
 ### `StepInterrupted`
 
 Step interrupted, no additional fields.
+
+### `StepRetry`
+
+::: info Added
+Added in Wire 1.10.
+:::
+
+The current step attempt failed and will be retried. This event is emitted when a step fails due to a recoverable error (such as rate limiting, connection timeout, or server error) and enters retry wait. Clients can use this to show retry status to the user, or clear incomplete state when the previous attempt already streamed partial output.
+
+```typescript
+interface StepRetry {
+  /** Step number */
+  n: number
+  /** Next attempt number, 1-based */
+  next_attempt: number
+  /** Maximum number of attempts for this step */
+  max_attempts: number
+  /** Seconds to wait before retrying */
+  wait_s: number
+  /** Exception class name that triggered the retry */
+  error_type: string
+  /** HTTP status code (if available), may be absent in JSON */
+  status_code?: number | null
+}
+```
 
 ### `CompactionBegin`
 
@@ -696,6 +748,42 @@ interface ApprovalResponse {
 }
 ```
 
+### `BtwBegin`
+
+::: info Added
+Added in Wire 1.9.
+:::
+
+A side question (`/btw`) has started processing.
+
+```typescript
+interface BtwBegin {
+  /** Unique ID to pair with the corresponding BtwEnd */
+  id: string
+  /** The user's original side question text */
+  question: string
+}
+```
+
+### `BtwEnd`
+
+::: info Added
+Added in Wire 1.9.
+:::
+
+A side question (`/btw`) has finished processing.
+
+```typescript
+interface BtwEnd {
+  /** Unique ID matching the corresponding BtwBegin */
+  id: string
+  /** The LLM's response text, or null if it failed */
+  response?: string | null
+  /** Error message if the side question failed */
+  error?: string | null
+}
+```
+
 ### `SubagentEvent`
 
 ::: info Changed
@@ -746,6 +834,48 @@ interface PlanDisplay {
   content: string
   /** Path to the plan file */
   file_path: string
+}
+```
+
+### `HookTriggered`
+
+::: info Added
+Added in Wire 1.7.
+:::
+
+Hook execution started event. Sent when configured hooks are triggered and begin executing, to notify the client that hooks are running.
+
+```typescript
+interface HookTriggered {
+  /** Hook event type, e.g., 'PreToolUse', 'Stop' */
+  event: string
+  /** Target of the hook: tool name for tool hooks, agent name for subagent hooks, etc. */
+  target: string
+  /** Number of matched hooks running in parallel */
+  hook_count: number
+}
+```
+
+### `HookResolved`
+
+::: info Added
+Added in Wire 1.7.
+:::
+
+Hook execution completed event. Sent when hooks finish executing, containing the result and duration information.
+
+```typescript
+interface HookResolved {
+  /** Hook event type, e.g., 'PreToolUse', 'Stop' */
+  event: string
+  /** Same as HookTriggered.target */
+  target: string
+  /** Aggregate decision: 'block' if any hook blocked, 'allow' otherwise */
+  action: "allow" | "block"
+  /** Reason for blocking, empty if allowed */
+  reason: string
+  /** Wall-clock time for the entire batch in milliseconds */
+  duration_ms: number
 }
 ```
 
@@ -903,6 +1033,46 @@ If the client does not support structured questions or the user dismisses the qu
 {"jsonrpc": "2.0", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "result": {"request_id": "q-1", "answers": {}}}
 ```
 
+### `HookRequest`
+
+::: info Added
+Added in Wire 1.7.
+:::
+
+Hook handling request, sent via `request` method. When a Wire client subscribes to hook events, the server sends this request to let the client handle the hook logic and return an allow/block decision.
+
+This feature requires capability negotiation: the server only sends corresponding `HookRequest` messages after the client declares subscriptions via `hooks` in `initialize`.
+
+```typescript
+interface HookRequest {
+  /** Request ID, used when responding */
+  id: string
+  /** Subscription ID, identifies which subscription triggered this request */
+  subscription_id: string
+  /** Hook event type, e.g., 'PreToolUse', 'Stop' */
+  event: string
+  /** Target that triggered the hook: tool name, agent name, etc. */
+  target: string
+  /** Full event payload (same as what shell hooks receive on stdin) */
+  input_data: object
+}
+```
+
+**Response format**
+
+The client should return a `HookResponse` as the response result:
+
+```typescript
+interface HookResponse {
+  /** Corresponding request ID */
+  request_id: string
+  /** Decision: allow or block */
+  action: "allow" | "block"
+  /** Reason for blocking */
+  reason: string
+}
+```
+
 ### `DisplayBlock`
 
 Display block types used in the `display` field of `ToolResult` and `ApprovalRequest`.
@@ -937,6 +1107,8 @@ interface DiffDisplayBlock {
   old_text: string
   /** New content */
   new_text: string
+  /** Whether this is a summary block (shows line count summary instead of actual diff for large files). May not be present in JSON. Added in Wire 1.8 */
+  is_summary?: boolean
 }
 
 interface TodoDisplayBlock {
@@ -983,7 +1155,7 @@ Kimi Agent (Rust) is the Rust implementation of the Kimi Code CLI kernel, design
 - **No Kimi account login**: No `login`/`logout` subcommands or `/login`, `/logout` slash commands; requires manual API key configuration
 - **No `--prompt`/`--command`**: Wire server does not accept initial prompts
 - **Local execution only**: No SSH Kaos support
-- **Different MCP OAuth storage**: Kimi Agent stores credentials in `~/.kimi/credentials/mcp_auth.json`, while Python version uses `~/.fastmcp/oauth-mcp-client-cache/`; they are incompatible
+- **Different MCP OAuth storage**: Kimi Agent stores credentials in `~/.kimi/credentials/mcp_auth.json`, while the Python version uses `~/.kimi/mcp-oauth/`; they are incompatible
 
 ### Installation
 

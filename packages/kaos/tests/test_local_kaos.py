@@ -66,6 +66,31 @@ async def test_iterdir_and_glob(local_kaos: LocalKaos):
     assert set(matched) == {"bravo.txt"}
 
 
+async def test_glob_includes_hidden_files(local_kaos: LocalKaos):
+    """Glob should match dotfiles (hidden files) with * and ** patterns."""
+    tmp_path = local_kaos.getcwd()
+
+    # Create hidden and visible files
+    await local_kaos.writetext(tmp_path / ".gitlab-ci.yml", "stages: [build]")
+    await local_kaos.writetext(tmp_path / "config.yml", "key: value")
+    await local_kaos.mkdir(tmp_path / "src")
+    await local_kaos.mkdir(tmp_path / "src" / ".config")
+    await local_kaos.writetext(tmp_path / "src" / ".config" / "settings.yml", "debug: true")
+    await local_kaos.writetext(tmp_path / "src" / "main.py", "pass")
+
+    # *.yml should match .gitlab-ci.yml
+    matched = {entry.name async for entry in local_kaos.glob(tmp_path, "*.yml")}
+    assert ".gitlab-ci.yml" in matched
+    assert "config.yml" in matched
+
+    # src/**/*.yml should find files in hidden directories
+    deep_matched = [
+        str(entry.relative_to(tmp_path))
+        async for entry in local_kaos.glob(tmp_path, "src/**/*.yml")
+    ]
+    assert any(".config" in p for p in deep_matched)
+
+
 async def test_read_write_and_append_text(local_kaos: LocalKaos):
     tmp_path = local_kaos.getcwd()
     file_path = tmp_path / "note.txt"
@@ -79,6 +104,29 @@ async def test_read_write_and_append_text(local_kaos: LocalKaos):
     await local_kaos.writetext(file_path, "\nline2", mode="a")
     lines = [line async for line in local_kaos.readlines(file_path)]
     assert "".join(lines) == "line1\nline2"
+
+
+async def test_writetext_preserves_lf_line_endings(local_kaos: LocalKaos):
+    """writetext should not convert LF to CRLF on any platform."""
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "lf.txt"
+
+    await local_kaos.writetext(file_path, "hello\nworld\n")
+
+    # Read back as binary to check actual bytes on disk
+    raw = await local_kaos.readbytes(file_path)
+    assert raw == b"hello\nworld\n", f"Expected LF line endings, got {raw!r}"
+
+
+async def test_writetext_preserves_crlf_line_endings(local_kaos: LocalKaos):
+    """writetext should preserve CRLF if explicitly present in content."""
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "crlf.txt"
+
+    await local_kaos.writetext(file_path, "hello\r\nworld\r\n")
+
+    raw = await local_kaos.readbytes(file_path)
+    assert raw == b"hello\r\nworld\r\n", f"Expected CRLF preserved, got {raw!r}"
 
 
 async def test_mkdir_with_parents(local_kaos: LocalKaos):

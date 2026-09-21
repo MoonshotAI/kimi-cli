@@ -78,3 +78,7 @@ class MockStreamedMessage(StreamedMessage):
     @property
     def usage(self) -> TokenUsage | None:
         return None
+
+    @property
+    def trace_id(self) -> str | None:
+        return None

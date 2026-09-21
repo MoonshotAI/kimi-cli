@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 
 from kimi_cli.subagents import AgentLaunchSpec, SubagentStore
@@ -97,3 +98,101 @@ def test_update_instance_does_not_touch_auxiliary_files(session) -> None:
     }
 
     assert after == before
+
+
+def test_list_instances_skips_corrupted_meta(session) -> None:
+    store = SubagentStore(session)
+    store.create_instance(
+        agent_id="a4444444",
+        description="valid task",
+        launch_spec=AgentLaunchSpec(
+            agent_id="a4444444",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+    bad_dir = store.instance_dir("a5555555", create=True)
+    (bad_dir / "meta.json").write_text('{"agent_id":"a5555555","launch_spec":', encoding="utf-8")
+
+    records = store.list_instances()
+
+    assert [record.agent_id for record in records] == ["a4444444"]
+
+
+def test_get_instance_returns_none_for_corrupted_meta(session) -> None:
+    store = SubagentStore(session)
+    bad_dir = store.instance_dir("a6666666", create=True)
+    (bad_dir / "meta.json").write_text(json.dumps({"oops": 1}), encoding="utf-8")
+
+    assert store.get_instance("a6666666") is None
+
+
+def test_get_instance_allows_missing_last_task_id_for_legacy_meta(session) -> None:
+    store = SubagentStore(session)
+    legacy_dir = store.instance_dir("a6767676", create=True)
+    (legacy_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "agent_id": "a6767676",
+                "subagent_type": "coder",
+                "status": "idle",
+                "description": "legacy task",
+                "created_at": 1.0,
+                "updated_at": 2.0,
+                "launch_spec": {
+                    "agent_id": "a6767676",
+                    "subagent_type": "coder",
+                    "model_override": None,
+                    "effective_model": None,
+                    "created_at": 1.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    record = store.get_instance("a6767676")
+
+    assert record is not None
+    assert record.last_task_id is None
+
+
+def test_list_instances_skips_meta_with_invalid_field_types(session) -> None:
+    store = SubagentStore(session)
+    store.create_instance(
+        agent_id="a7777777",
+        description="valid task",
+        launch_spec=AgentLaunchSpec(
+            agent_id="a7777777",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+    bad_dir = store.instance_dir("a8888888", create=True)
+    (bad_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "agent_id": "a8888888",
+                "subagent_type": "coder",
+                "status": "idle",
+                "description": "bad task",
+                "created_at": "not-a-number",
+                "updated_at": "also-bad",
+                "last_task_id": None,
+                "launch_spec": {
+                    "agent_id": "a8888888",
+                    "subagent_type": "coder",
+                    "model_override": None,
+                    "effective_model": None,
+                    "created_at": "not-a-number",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    records = store.list_instances()
+
+    assert [record.agent_id for record in records] == ["a7777777"]

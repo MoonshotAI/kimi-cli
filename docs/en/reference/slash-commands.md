@@ -3,7 +3,7 @@
 Slash commands are built-in commands for Kimi Code CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
 ::: tip Shell mode
-Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, `/feedback`, `/export`, `/import`, and `/task`.
+Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/theme`, `/changelog`, `/feedback`, `/export`, `/import`, and `/task`.
 :::
 
 ## Help and info
@@ -65,6 +65,18 @@ This command is only available when using the default configuration file. If a c
 
 Set the external editor. When called without arguments, displays an interactive selection interface; you can also specify the editor command directly, e.g., `/editor vim`. After configuration, pressing `Ctrl-O` will open this editor to edit the current input content. See [Keyboard shortcuts](./keyboard.md#external-editor) for details.
 
+### `/theme`
+
+Switch the terminal color theme. Kimi Code CLI provides dark and light color palettes, defaulting to dark.
+
+Usage:
+
+- `/theme`: Show the current theme
+- `/theme dark`: Switch to dark theme
+- `/theme light`: Switch to light theme
+
+After switching, the configuration is saved to `config.toml` and the shell reloads automatically. The light theme adjusts colors for diff highlights, the task browser, the prompt completion menu, the bottom toolbar, and MCP status indicators to work well on light terminal backgrounds. You can also set `theme = "light"` directly in your config file — see [Config files](../configuration/config-files.md).
+
 ### `/reload`
 
 Reload the configuration file without exiting Kimi Code CLI.
@@ -96,6 +108,14 @@ Output includes:
 - Server connection status (green indicates connected)
 - List of tools provided by each server
 
+### `/hooks`
+
+Display currently configured hooks. See [Hooks](../customization/hooks.md) for details.
+
+Output includes:
+- Event types and counts of configured hooks
+- Help message (if no hooks are configured)
+
 ## Session management
 
 ### `/new`
@@ -108,7 +128,34 @@ List all sessions in the current working directory, allowing switching to other 
 
 Alias: `/resume`
 
-Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel.
+Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel. Press `Ctrl-A` to toggle between showing sessions for the current directory only or across all directories.
+
+### `/title`
+
+View or set the current session title. The configured title is shown in the `/sessions` list, making it easier to identify and find sessions.
+
+Alias: `/rename`
+
+Usage:
+
+- `/title`: Show the current session title
+- `/title <text>`: Set the session title (max 200 characters)
+
+After the first conversation turn, the title is automatically derived from the user message; once manually set with this command, auto-generation will no longer overwrite it.
+
+### `/undo`
+
+Roll back to a previous turn and retry. An interactive selector shows all historical turns with the user message (truncated to 80 characters). After selecting a turn, Kimi Code CLI forks a new session containing all conversation history **before** that turn and pre-fills the selected turn's user message into the input box for re-editing. The original session is always preserved.
+
+Use arrow keys to navigate, `Enter` to confirm, `Ctrl-C` to cancel.
+
+::: tip Use case
+When the API returns a truncated or malformed response that breaks the session, use `/undo` to roll back to a turn before the problem and retry without abandoning the entire session.
+:::
+
+### `/fork`
+
+Fork a new session from the current one, copying the entire conversation history. The original session remains unchanged, and the new session becomes the active session. Useful when you want to branch out and try a different direction from the current state.
 
 ### `/export`
 
@@ -169,8 +216,8 @@ Execute a specific flow skill. Flow skills embed an Agent Flow diagram in `SKILL
 
 For example:
 
-- `/flow:code-review`: Execute code review workflow
-- `/flow:release`: Execute release workflow
+- `/flow:pull-request`: Execute the pull-request creation workflow
+- `/flow:code-review`: Execute a code review workflow
 
 ::: tip
 Flow skills can also be invoked via `/skill:<name>`, which loads the content as a standard skill without automatically executing the flow.
@@ -194,6 +241,20 @@ Directories already within the working directory do not need to be added, as the
 :::
 
 ## Others
+
+### `/btw`
+
+Ask a quick side question without interrupting the main conversation. Available both when idle and during streaming.
+
+Usage: `/btw <question>`
+
+The side question runs in an isolated context: it sees the conversation history but does not modify it. Tool calls are disabled — the response is text-only, based on the model's existing knowledge of the conversation.
+
+During streaming, the response appears in a scrollable modal panel overlaying the prompt area. Use `↑`/`↓` to scroll, `Escape` to dismiss.
+
+::: tip
+This command is only available in interactive shell mode. Wire and ACP clients can use the `BtwBegin`/`BtwEnd` wire events with the `run_side_question()` API.
+:::
 
 ### `/init`
 
@@ -243,15 +304,40 @@ Background tasks are started by the AI using the `Shell` tool with `run_in_backg
 
 ### `/yolo`
 
-Toggle YOLO mode. When enabled, all operations are automatically approved and a yellow YOLO badge appears in the status bar; enter the command again to disable.
+Toggle YOLO mode. When enabled, all tool calls are automatically approved and a yellow YOLO badge appears in the status bar; enter the command again to disable. YOLO only removes approval friction — the agent can still reach you via `AskUserQuestion`. `/yolo` and `/afk` are independent.
 
 ::: warning Note
-YOLO mode skips all confirmations. Make sure you understand the potential risks.
+YOLO mode skips all approval confirmations. Make sure you understand the potential risks.
+:::
+
+### `/afk`
+
+Toggle AFK (away-from-keyboard) mode. When enabled, AFK auto-approves all tool calls and additionally auto-dismisses any `AskUserQuestion` the agent sends — so the agent makes its own judgment instead of waiting for a reply that will not come. An orange AFK badge appears in the status bar independently of the YOLO badge; enter the command again to disable.
+
+::: warning Note
+AFK skips all approval confirmations and removes the clarifying-question safety net. Only use when you genuinely cannot be at the terminal.
 :::
 
 ### `/web`
 
 Switch to Web UI. Kimi Code CLI will start a Web UI server and open the current session in your browser, allowing you to continue the conversation in the Web UI. See [Web UI](./kimi-web.md) for details.
+
+### `/vis`
+
+Switch to the Agent Tracing Visualizer. Kimi Code CLI will start the visualizer server and open the current session's tracing view in the browser, where you can inspect Wire event timelines, context messages, and usage statistics. See [Agent Tracing Visualizer](./kimi-vis.md) for details.
+
+### `/upgrade`
+
+Install the new Kimi Code — the faster, more powerful successor. Running it shows the install command and asks whether to install immediately:
+
+- Install now: Kimi Code CLI runs the install script, and your existing config and sessions are migrated automatically
+- Install later: only the install command is shown so you can run it manually
+
+After installation, open a new terminal and run `kimi` to start the new Kimi Code.
+
+::: tip Note
+This command is only available in interactive shell mode.
+:::
 
 ## Command completion
 

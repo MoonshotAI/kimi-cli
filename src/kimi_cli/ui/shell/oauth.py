@@ -73,6 +73,9 @@ async def login(app: Shell, args: str) -> None:
         ok = await setup_platform(platform)
     if not ok:
         return
+    from kimi_cli.telemetry import track
+
+    track("login", provider=platform.id)
     await asyncio.sleep(1)
     console.clear()
     raise Reload
@@ -138,6 +141,9 @@ async def logout(app: Shell, args: str) -> None:
         save_config(config)
         console.print("[green]✓[/green] Logged out successfully.")
 
+    from kimi_cli.telemetry import track
+
+    track("logout")
     await asyncio.sleep(1)
     console.clear()
     raise Reload

@@ -6,7 +6,14 @@ from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.llm import ModelCapability
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
-from kimi_cli.wire.types import ImageURLPart, TextPart, ThinkPart, ToolResult, VideoURLPart
+from kimi_cli.wire.types import (
+    AudioURLPart,
+    ImageURLPart,
+    TextPart,
+    ThinkPart,
+    ToolResult,
+    VideoURLPart,
+)
 
 
 def test_system_message_creation():
@@ -163,20 +170,65 @@ def test_tool_ok_with_non_text_parts():
 
 
 def test_tool_ok_with_only_non_text_parts():
-    """Test ToolResult with ToolOk containing only non-text parts."""
+    """Test ToolResult with ToolOk containing only non-text parts.
+
+    When a tool returns only non-text content (e.g. image from MCP tools),
+    a TextPart must be prepended so the LLM API doesn't reject the message
+    with "text content is empty" (see #1663).
+    """
     image_part = ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/image.jpg"))
     tool_ok = ToolOk(output=image_part)
     tool_result = ToolResult(tool_call_id="call_123", return_value=tool_ok)
 
-    # With current implementation, non-text parts are included in the same message
     message = tool_result_to_message(tool_result)
 
     assert isinstance(message, Message)
     assert message.role == "tool"
     assert message.tool_call_id == "call_123"
-    # Should have only the image part (no text parts)
-    assert len(message.content) == 1
-    assert message.content[0] == image_part
+    # Must have a TextPart prepended + original image part
+    assert len(message.content) == 2
+    assert isinstance(message.content[0], TextPart)
+    assert message.content[1] == image_part
+
+
+def test_tool_ok_with_only_image_list():
+    """Test ToolResult with ToolOk containing a list of only image parts."""
+    img1 = ImageURLPart(image_url=ImageURLPart.ImageURL(url="data:image/png;base64,abc"))
+    img2 = ImageURLPart(image_url=ImageURLPart.ImageURL(url="data:image/png;base64,def"))
+    tool_ok = ToolOk(output=[img1, img2])
+    tool_result = ToolResult(tool_call_id="call_123", return_value=tool_ok)
+
+    message = tool_result_to_message(tool_result)
+
+    assert isinstance(message.content[0], TextPart)
+    assert message.content[1] == img1
+    assert message.content[2] == img2
+
+
+def test_tool_ok_with_only_audio_part():
+    """Test ToolResult with ToolOk containing only audio content."""
+    audio_part = AudioURLPart(audio_url=AudioURLPart.AudioURL(url="data:audio/mp3;base64,abc"))
+    tool_ok = ToolOk(output=audio_part)
+    tool_result = ToolResult(tool_call_id="call_123", return_value=tool_ok)
+
+    message = tool_result_to_message(tool_result)
+
+    assert isinstance(message.content[0], TextPart)
+    assert message.content[1] == audio_part
+
+
+def test_tool_ok_with_message_and_only_image():
+    """Test ToolResult with message but only image output — message provides TextPart."""
+    image_part = ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/img.jpg"))
+    tool_ok = ToolOk(output=image_part, message="Screenshot captured")
+    tool_result = ToolResult(tool_call_id="call_123", return_value=tool_ok)
+
+    message = tool_result_to_message(tool_result)
+
+    # The message field provides a TextPart via system(), so no extra TextPart needed
+    assert isinstance(message.content[0], TextPart)
+    assert "Screenshot captured" in message.content[0].text
+    assert message.content[1] == image_part
 
 
 def test_tool_ok_with_only_text_parts():

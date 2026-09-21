@@ -17,6 +17,7 @@ def _make_soul_mock(
 ) -> MagicMock:
     soul = MagicMock()
     type(soul).plan_mode = PropertyMock(return_value=plan_mode)
+    type(soul).is_subagent = PropertyMock(return_value=False)
     soul.get_plan_file_path.return_value = plan_path
     soul.consume_pending_plan_activation_injection.return_value = consume_pending
     return soul

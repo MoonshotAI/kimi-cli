@@ -24,6 +24,10 @@ If you encounter issues or have suggestions, please provide feedback on [GitHub 
 
 ## Installation
 
+::: tip
+Kimi Code CLI is evolving into [Kimi Code](https://github.com/MoonshotAI/kimi-code). Installing Kimi Code **automatically migrates** your configuration and sessions. New users are encouraged to install Kimi Code directly; the instructions below still work, and existing users don't need to migrate immediately.
+:::
+
 Run the installation script to complete the installation. The script will first install [uv](https://docs.astral.sh/uv/) (a Python package manager), then install Kimi Code CLI via uv:
 
 ```sh

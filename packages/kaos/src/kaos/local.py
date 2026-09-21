@@ -151,7 +151,9 @@ class LocalKaos:
         errors: Literal["strict", "ignore", "replace"] = "strict",
     ) -> int:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
-        async with aiofiles.open(local_path, mode=mode, encoding=encoding, errors=errors) as f:
+        async with aiofiles.open(
+            local_path, mode=mode, encoding=encoding, errors=errors, newline=""
+        ) as f:
             return await f.write(data)
 
     async def mkdir(

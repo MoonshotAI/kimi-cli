@@ -393,32 +393,9 @@ export const CodeBlock = ({
               </TooltipContent>
             </Tooltip>
           )}
-          {language === "html" && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <CodeBlockPreviewButton />
-              </TooltipTrigger>
-              <TooltipContent className="px-1.5 py-0.5">
-                <p className="text-[12px]">Preview</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <CodeBlockDownloadButton language={language} />
-            </TooltipTrigger>
-            <TooltipContent className="px-1.5 py-0.5">
-              <p className="text-[12px]">Download</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <CodeBlockCopyButton />
-            </TooltipTrigger>
-            <TooltipContent className="px-1.5 py-0.5">
-              <p className="text-[12px]">Copy</p>
-            </TooltipContent>
-          </Tooltip>
+          {language === "html" && <CodeBlockPreviewButton />}
+          <CodeBlockDownloadButton language={language} />
+          <CodeBlockCopyButton />
           {children}
         </div>
 
@@ -493,6 +470,7 @@ export type CodeBlockCopyButtonProps = ComponentProps<typeof Button> & {
   onCopy?: () => void;
   onError?: (error: Error) => void;
   timeout?: number;
+  tooltip?: string;
 };
 
 export const CodeBlockCopyButton = ({
@@ -500,6 +478,7 @@ export const CodeBlockCopyButton = ({
   onCopy,
   onError,
   timeout = 2000,
+  tooltip = "Copy",
   children,
   className,
   ...props
@@ -526,16 +505,23 @@ export const CodeBlockCopyButton = ({
   const Icon = isCopied ? CheckIcon : CopyIcon;
 
   return (
-    <Button
-      ref={ref}
-      className={cn("shrink-0", className)}
-      onClick={copyToClipboard}
-      size="icon-xs"
-      variant="ghost"
-      {...props}
-    >
-      {children ?? <Icon className="size-3.5" />}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          ref={ref}
+          className={cn("shrink-0", className)}
+          onClick={copyToClipboard}
+          size="icon-xs"
+          variant="ghost"
+          {...props}
+        >
+          {children ?? <Icon className="size-3.5" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="px-1.5 py-0.5">
+        <p className="text-[12px]">{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 };
 
@@ -545,6 +531,7 @@ export type CodeBlockDownloadButtonProps = ComponentProps<typeof Button> & {
   mimeType?: string;
   onDownload?: (filename: string) => void;
   onError?: (error: Error) => void;
+  tooltip?: string;
 };
 
 export const CodeBlockDownloadButton = ({
@@ -554,6 +541,7 @@ export const CodeBlockDownloadButton = ({
   mimeType = "text/plain",
   onDownload,
   onError,
+  tooltip = "Download",
   children,
   className,
   ...props
@@ -586,28 +574,37 @@ export const CodeBlockDownloadButton = ({
   };
 
   return (
-    <Button
-      ref={ref}
-      className={cn("shrink-0", className)}
-      onClick={handleDownload}
-      size="icon-xs"
-      variant="ghost"
-      {...props}
-    >
-      {children ?? <DownloadIcon className="size-3.5" />}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          ref={ref}
+          className={cn("shrink-0", className)}
+          onClick={handleDownload}
+          size="icon-xs"
+          variant="ghost"
+          {...props}
+        >
+          {children ?? <DownloadIcon className="size-3.5" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="px-1.5 py-0.5">
+        <p className="text-[12px]">{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 };
 
 export type CodeBlockPreviewButtonProps = ComponentProps<typeof Button> & {
   onPreview?: () => void;
   onError?: (error: Error) => void;
+  tooltip?: string;
 };
 
 export const CodeBlockPreviewButton = ({
   ref,
   onPreview,
   onError,
+  tooltip = "Preview",
   children,
   className,
   ...props
@@ -634,15 +631,22 @@ export const CodeBlockPreviewButton = ({
   };
 
   return (
-    <Button
-      ref={ref}
-      className={cn("shrink-0", className)}
-      onClick={handlePreview}
-      size="icon-xs"
-      variant="ghost"
-      {...props}
-    >
-      {children ?? <ExternalLinkIcon className="size-3.5" />}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          ref={ref}
+          className={cn("shrink-0", className)}
+          onClick={handlePreview}
+          size="icon-xs"
+          variant="ghost"
+          {...props}
+        >
+          {children ?? <ExternalLinkIcon className="size-3.5" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="px-1.5 py-0.5">
+        <p className="text-[12px]">{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 };

@@ -278,6 +278,40 @@ async def test_openai_legacy_reasoning_content():
         )
 
 
+async def test_openai_legacy_empty_reasoning_content_is_round_tripped():
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = OpenAILegacy(
+            model="deepseek-reasoner",
+            api_key="test-key",
+            stream=False,
+            reasoning_key="reasoning_content",
+        )
+        history = [
+            Message(role="user", content="What is 2+2?"),
+            Message(
+                role="assistant",
+                content=[ThinkPart(think=""), TextPart(text="4.")],
+            ),
+            Message(role="user", content="Thanks!"),
+        ]
+        stream = await provider.generate("", [], history)
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["messages"] == [
+            {"role": "user", "content": "What is 2+2?"},
+            {
+                "role": "assistant",
+                "content": "4.",
+                "reasoning_content": "",
+            },
+            {"role": "user", "content": "Thanks!"},
+        ]
+
+
 async def test_openai_legacy_generation_kwargs():
     with respx.mock(base_url="https://api.openai.com") as mock:
         mock.post("/v1/chat/completions").mock(
@@ -306,3 +340,90 @@ async def test_openai_legacy_with_thinking():
             pass
         body = json.loads(mock.calls.last.request.content.decode())
         assert body["reasoning_effort"] == snapshot("high")
+
+
+async def test_openai_legacy_auto_reasoning_effort_when_history_has_think_part():
+    """When reasoning_effort is not set but history contains ThinkPart and reasoning_key is
+    configured, reasoning_effort should be auto-set to avoid server validation errors.
+
+    Reproduces: https://github.com/MoonshotAI/kimi-cli/issues/1616
+    """
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        # Provider with reasoning_key but NO explicit reasoning_effort
+        provider = OpenAILegacy(
+            model="kimi-k2.5",
+            api_key="test-key",
+            stream=False,
+            reasoning_key="reasoning_content",
+        )
+        history = [
+            Message(role="user", content="Hello"),
+            Message(
+                role="assistant",
+                content=[ThinkPart(think="Let me think..."), TextPart(text="Hi!")],
+            ),
+            Message(role="user", content="How are you?"),
+        ]
+        stream = await provider.generate("", [], history)
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        # reasoning_effort should be auto-set because history contains ThinkPart
+        assert body["reasoning_effort"] == "medium"
+        # reasoning_content should still be present in the message
+        assert body["messages"][1]["reasoning_content"] == "Let me think..."
+
+
+async def test_openai_legacy_no_auto_reasoning_effort_without_think_part():
+    """When history has no ThinkPart, reasoning_effort should remain unset."""
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = OpenAILegacy(
+            model="kimi-k2.5",
+            api_key="test-key",
+            stream=False,
+            reasoning_key="reasoning_content",
+        )
+        history = [
+            Message(role="user", content="Hello"),
+            Message(role="assistant", content="Hi!"),
+            Message(role="user", content="How are you?"),
+        ]
+        stream = await provider.generate("", [], history)
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "reasoning_effort" not in body
+
+
+async def test_openai_legacy_no_auto_reasoning_effort_without_reasoning_key():
+    """When reasoning_key is not configured, reasoning_effort should not be auto-set
+    even if history has ThinkPart (ThinkPart would be silently dropped)."""
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        # No reasoning_key configured
+        provider = OpenAILegacy(
+            model="some-model",
+            api_key="test-key",
+            stream=False,
+        )
+        history = [
+            Message(role="user", content="Hello"),
+            Message(
+                role="assistant",
+                content=[ThinkPart(think="Thinking..."), TextPart(text="Hi!")],
+            ),
+            Message(role="user", content="How are you?"),
+        ]
+        stream = await provider.generate("", [], history)
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "reasoning_effort" not in body

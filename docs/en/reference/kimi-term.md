@@ -26,7 +26,7 @@ Common options:
 |--------|-------------|
 | `--work-dir PATH` | Specify working directory |
 | `--model NAME` | Specify model |
-| `--yolo` | Auto-approve all operations |
+| `--yolo` | Auto-approve all tool calls |
 
 For the full list of options, see [`kimi` command](./kimi-command.md).
 

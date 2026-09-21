@@ -107,6 +107,52 @@ def test_invalid_config_toml_is_reported(tmp_path: Path) -> None:
         f"""\
 Invalid TOML in configuration file {config_path}: Invalid key "this is not toml" at line 1 col 17
 See logs: {log_path}
+Run with --debug for full traceback, or run kimi export to share diagnostics.
+"""
+    )
+
+
+def test_session_and_continue_conflict_is_reported(tmp_path: Path) -> None:
+    share_dir = tmp_path / "share"
+    result = _run_kimi(["--session", "abc", "--continue"], share_dir=share_dir)
+    assert result.returncode == snapshot(2)
+    assert result.stdout == snapshot("")
+    assert _normalize_cli_error_output(result.stderr) == snapshot(
+        """\
+Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
+Try 'python -m kimi_cli.cli -h' for help.
+Error:
+Invalid value for --continue: Cannot combine --continue, --session.
+"""
+    )
+
+
+def test_session_picker_with_print_mode_is_reported(tmp_path: Path) -> None:
+    share_dir = tmp_path / "share"
+    result = _run_kimi(["--session", "--print", "--prompt", "hi"], share_dir=share_dir)
+    assert result.returncode == snapshot(2)
+    assert result.stdout == snapshot("")
+    assert _normalize_cli_error_output(result.stderr) == snapshot(
+        """\
+Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
+Try 'python -m kimi_cli.cli -h' for help.
+Error:
+Invalid value for --session: --session without a session ID is only supported for shell UI
+"""
+    )
+
+
+def test_resume_alias_and_continue_conflict_is_reported(tmp_path: Path) -> None:
+    share_dir = tmp_path / "share"
+    result = _run_kimi(["--resume", "abc", "--continue"], share_dir=share_dir)
+    assert result.returncode == snapshot(2)
+    assert result.stdout == snapshot("")
+    assert _normalize_cli_error_output(result.stderr) == snapshot(
+        """\
+Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
+Try 'python -m kimi_cli.cli -h' for help.
+Error:
+Invalid value for --continue: Cannot combine --continue, --session.
 """
     )
 
