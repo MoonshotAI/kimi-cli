@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.51.0 (2026-09-21)
+
 **亮点**：Kimi CLI 已归档，不再维护，这是最后一个版本。请迁移至 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code)，详见 [迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)
 
 - Build：将 `kimi-cli` 及本仓库中的所有包标记为已归档——此后不再发布新版本、Bug 修复或安全更新

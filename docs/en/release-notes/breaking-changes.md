@@ -4,6 +4,8 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+## 1.51.0
+
 ### The `kimi-code` package on PyPI no longer installs Kimi CLI
 
 The `kimi-code` package on PyPI used to be an alias of Kimi CLI. It is now a stub that only prints instructions for installing the new Kimi Code CLI and exits with status 1. Kimi CLI itself is archived and no longer maintained.
