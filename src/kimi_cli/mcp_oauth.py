@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 from kimi_cli.share import get_share_dir
 
 if TYPE_CHECKING:
+    import httpx
     from fastmcp.client.auth.oauth import OAuth, TokenStorageAdapter
     from key_value.aio.stores.filetree import FileTreeStore
 
@@ -87,12 +88,12 @@ def create_mcp_oauth(server_url: str, scopes: object | None = None) -> OAuth:
 
             webbrowser.open(authorization_url)
 
-        async def _handle_token_response(self, response: Any) -> None:
+        async def _handle_token_response(self, response: httpx.Response) -> None:
             if response.status_code == 201:
                 response.status_code = 200
             await super()._handle_token_response(response)
 
-        async def _handle_refresh_response(self, response: Any) -> bool:
+        async def _handle_refresh_response(self, response: httpx.Response) -> bool:
             if response.status_code == 201:
                 response.status_code = 200
             return await super()._handle_refresh_response(response)
