@@ -153,6 +153,30 @@ print("ok")
     assert proc.stdout.strip() == "ok"
 
 
+def test_package_entrypoint_sets_ai_agent_marker() -> None:
+    proc = _run_python(
+        """
+import io
+import os
+from contextlib import redirect_stdout
+
+from kimi_cli.__main__ import main
+
+os.environ.pop("AI_AGENT", None)
+with redirect_stdout(io.StringIO()):
+    main(["--version"])
+assert os.environ["AI_AGENT"] == "kimi"
+
+os.environ["AI_AGENT"] = "wrapper"
+with redirect_stdout(io.StringIO()):
+    main(["--version"])
+assert os.environ["AI_AGENT"] == "wrapper"
+print("ok")
+"""
+    )
+    assert proc.stdout.strip() == "ok"
+
+
 def test_package_entrypoint_falls_back_to_cli_for_commands() -> None:
     proc = _run_python(
         """
@@ -200,6 +224,36 @@ with redirect_stderr(stderr):
 
 assert exit_code == 1
 assert stderr.getvalue() == "Error: install Git for Windows\\n"
+print("ok")
+"""
+    )
+    assert proc.stdout.strip() == "ok"
+
+
+def test_cli_module_entrypoint_sets_ai_agent_marker() -> None:
+    proc = _run_python(
+        """
+import os
+
+import kimi_cli.cli.__main__ as cli_main
+
+seen = []
+
+def fake_cli(*_args, **_kwargs):
+    seen.append(os.environ["AI_AGENT"])
+
+cli_main.cli = fake_cli
+
+os.environ.pop("AI_AGENT", None)
+cli_main.main([])
+
+os.environ["AI_AGENT"] = "  "
+cli_main.main([])
+
+os.environ["AI_AGENT"] = "wrapper"
+cli_main.main([])
+
+assert seen == ["kimi", "kimi", "wrapper"]
 print("ok")
 """
     )
