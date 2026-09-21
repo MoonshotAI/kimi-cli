@@ -1376,12 +1376,6 @@ dev = [
 name = "kimi-code"
 version = "1.50.0"
 source = { editable = "packages/kimi-code" }
-dependencies = [
-    { name = "kimi-cli" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "kimi-cli", editable = "." }]
 
 [[package]]
 name = "kimi-sdk"

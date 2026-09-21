@@ -33,7 +33,7 @@ The Rust implementation (`kagent`) lives in a separate repository and is **not**
    - Update `breaking-changes.md` in both languages if there are breaking changes.
    - If bumping `packages/kosong` or `packages/kaos`, also update the root `pyproject.toml` pinned dependency (`kosong[contrib]==<version>` or `pykaos==<version>`) so root validation keeps passing.
 
-6. **Sync the `kimi-code` wrapper when the root version changes.** Bump `packages/kimi-code/pyproject.toml` `version` and its `kimi-cli==<version>` dependency to match the new root version.
+6. **Sync the `kimi-code` wrapper when the root version changes.** Bump `packages/kimi-code/pyproject.toml` `version` to match the new root version. It is a legacy stub with no dependencies — do not add a `kimi-cli` pin back.
 
 7. **Run `uv sync`** to refresh the lockfile.
 
@@ -41,7 +41,7 @@ The Rust implementation (`kagent`) lives in a separate repository and is **not**
 
 9. **Confirm with the user before opening the PR.** Summarize the staged changes and ask the user to explicitly confirm:
    - **Version numbers** — every updated `pyproject.toml` (changed package + `packages/kimi-code` if the root moved) reflects the version agreed in step 3.
-   - **Dependency pins** — the root `pyproject.toml` pins (`kosong[contrib]==<version>`, `pykaos==<version>`) and `packages/kimi-code`'s `kimi-cli==<version>` match the bumped versions.
+   - **Dependency pins** — the root `pyproject.toml` pins (`kosong[contrib]==<version>`, `pykaos==<version>`) match the bumped versions.
    - **Documentation** — CHANGELOG entries are added below `## Unreleased` (Unreleased still present and empty), `breaking-changes.md` is updated in both languages if applicable, and `gen-docs` left no inconsistencies.
 
    Wait for explicit user approval before proceeding. If the user flags anything, fix it and re-confirm — do not push.

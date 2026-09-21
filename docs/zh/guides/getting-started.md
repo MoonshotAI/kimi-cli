@@ -1,5 +1,9 @@
 # 开始使用
 
+::: danger 警告
+**本项目已归档**。Kimi CLI 已停止维护，不再提供任何更新和安全修复，旧版将无法继续使用。请改为安装 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code)，详见 [迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)。
+:::
+
 ## Kimi Code CLI 是什么
 
 Kimi Code CLI 是一个运行在终端中的 AI Agent，帮助你完成软件开发任务和终端操作。它可以阅读和编辑代码、执行 Shell 命令、搜索和抓取网页，并在执行过程中自主规划和调整行动。
@@ -24,52 +28,23 @@ Kimi Code CLI 支持以下几种使用方式：
 
 ## 安装
 
-
-::: tip
-Kimi Code CLI 已升级为 [Kimi Code](https://github.com/MoonshotAI/kimi-code)，安装 Kimi Code 后会**自动迁移**你的配置与会话。新用户建议直接安装 Kimi Code；
-:::
-
-运行安装脚本即可完成安装。脚本会先安装 [uv](https://docs.astral.sh/uv/)（Python 包管理工具），再通过 uv 安装 Kimi Code CLI：
+Kimi CLI 已归档，不应再安装。请改为安装 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code)：
 
 ```sh
 # Linux / macOS
-curl -LsSf https://code.kimi.com/install.sh | bash
+curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
 ```
 
 ```powershell
 # Windows (PowerShell)
-Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression
+irm https://code.kimi.com/kimi-code/install.ps1 | iex
 ```
 
-验证安装是否成功：
+如果你之前使用过 Kimi CLI，Kimi Code CLI 首次启动时会提示迁移配置、MCP 服务与会话，你也可以随时运行 `kimi migrate`。详见 [迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)。
 
-```sh
-kimi --version
-```
+## 卸载
 
-::: tip 提示
-由于 macOS 的安全检查机制，首次运行 `kimi` 命令可能需要较长时间。可以在「系统设置 → 隐私与安全性 → 开发者工具」中添加你的终端应用来加速后续启动。
-:::
-
-如果你已经安装了 uv，也可以直接运行：
-
-```sh
-uv tool install --python 3.13 kimi-cli
-```
-
-::: tip 提示
-Kimi Code CLI 支持 Python 3.12-3.14，但建议使用 3.13 以获得最佳兼容性。
-:::
-
-## 升级与卸载
-
-升级到最新版本：
-
-```sh
-uv tool upgrade kimi-cli --no-cache
-```
-
-卸载 Kimi Code CLI：
+迁移到 Kimi Code CLI 后，卸载 Kimi CLI：
 
 ```sh
 uv tool uninstall kimi-cli

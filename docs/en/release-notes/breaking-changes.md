@@ -4,6 +4,13 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+### The `kimi-code` package on PyPI no longer installs Kimi CLI
+
+The `kimi-code` package on PyPI used to be an alias of Kimi CLI. It is now a stub that only prints instructions for installing the new Kimi Code CLI and exits with status 1. Kimi CLI itself is archived and no longer maintained.
+
+- **Affected**: Users who installed Kimi CLI through the `kimi-code` package on PyPI (for example `uv tool install kimi-code`)
+- **Migration**: Install Kimi Code CLI with `curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash` (Windows: `irm https://code.kimi.com/kimi-code/install.ps1 | iex`), then run `kimi migrate` to migrate your config and sessions. See the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration)
+
 ## 1.49.0
 
 ### Kimi no longer sends legacy `reasoning_effort` automatically

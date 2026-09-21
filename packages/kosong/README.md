@@ -1,5 +1,8 @@
 # Kosong
 
+> [!CAUTION]
+> **Archived: no longer maintained.** This package was developed in the [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) monorepo, which has been archived. Published versions remain available on PyPI, but there will be no further releases, bug fixes, or security updates. The source code remains available under the Apache License 2.0.
+
 Kosong is an LLM abstraction layer designed for modern AI agent applications. It unifies message structures, asynchronous tool orchestration, and pluggable chat providers so you can build agents with ease and avoid vendor lock-in.
 
 > Kosong means "empty" in Malay and Indonesian.

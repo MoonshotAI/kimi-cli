@@ -2,8 +2,8 @@
 import { useData } from 'vitepress'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
-const STORAGE_KEY = 'kimi-cli-evolution-banner-dismissed'
-const TARGET_URL = 'https://github.com/MoonshotAI/kimi-code'
+// Renamed when the project was archived so that previously dismissed banners show again.
+const STORAGE_KEY = 'kimi-cli-archived-banner-dismissed'
 const HTML_CLASS = 'has-evolution-banner'
 
 const { lang } = useData()
@@ -17,7 +17,12 @@ function applyHtmlClass(active: boolean) {
 }
 
 onMounted(() => {
-  dismissed.value = localStorage.getItem(STORAGE_KEY) === '1'
+  try {
+    dismissed.value = localStorage.getItem(STORAGE_KEY) === '1'
+  } catch {
+    // Storage blocked by browser settings: keep showing the archive notice.
+    dismissed.value = false
+  }
   hydrated.value = true
 })
 
@@ -41,8 +46,13 @@ function dismiss() {
 const isZh = computed(() => lang.value.startsWith('zh'))
 const message = computed(() =>
   isZh.value
-    ? 'Kimi Code CLI 重构升级版已发布，迭代更快   了解更多➡️'
-    : 'Kimi Code CLI rebuilt & upgraded version released — faster iterations. Learn more ➡️',
+    ? 'Kimi CLI 已归档，旧版将无法继续使用，请迁移至 Kimi Code CLI ➡️'
+    : 'Kimi CLI is archived and will stop working. Please migrate to Kimi Code CLI ➡️',
+)
+const targetUrl = computed(() =>
+  isZh.value
+    ? 'https://moonshotai.github.io/kimi-code/zh/guides/migration'
+    : 'https://moonshotai.github.io/kimi-code/en/guides/migration',
 )
 const closeLabel = computed(() => (isZh.value ? '关闭' : 'Dismiss'))
 </script>
@@ -51,7 +61,7 @@ const closeLabel = computed(() => (isZh.value ? '关闭' : 'Dismiss'))
   <div v-if="hydrated && !dismissed" class="evolution-banner">
     <a
       class="evolution-banner__link"
-      :href="TARGET_URL"
+      :href="targetUrl"
       target="_blank"
       rel="noopener"
     >

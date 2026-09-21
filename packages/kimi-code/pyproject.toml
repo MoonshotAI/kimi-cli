@@ -1,13 +1,19 @@
 [project]
 name = "kimi-code"
 version = "1.50.0"
-description = "Kimi Code is a CLI agent that lives in your terminal."
+description = "[Archived] Legacy PyPI package, NOT the new Kimi Code CLI. Install Kimi Code CLI from https://github.com/MoonshotAI/kimi-code"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["kimi-cli==1.50.0"]
+classifiers = ["Development Status :: 7 - Inactive"]
+dependencies = []
+
+[project.urls]
+"Kimi Code CLI" = "https://github.com/MoonshotAI/kimi-code"
+"Migration Guide" = "https://moonshotai.github.io/kimi-code/en/guides/migration"
+Source = "https://github.com/MoonshotAI/kimi-cli"
 
 [project.scripts]
-kimi-code = "kimi_cli.__main__:main"
+kimi-code = "kimi_code:main"
 
 [build-system]
 requires = ["uv_build>=0.8.5,<0.10.0"]

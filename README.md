@@ -1,15 +1,58 @@
-# Kimi CLI
+# Kimi CLI (Archived)
 
-[![Commit Activity](https://img.shields.io/github/commit-activity/w/MoonshotAI/kimi-cli)](https://github.com/MoonshotAI/kimi-cli/graphs/commit-activity)
-[![Checks](https://img.shields.io/github/check-runs/MoonshotAI/kimi-cli/main)](https://github.com/MoonshotAI/kimi-cli/actions)
-[![Version](https://img.shields.io/pypi/v/kimi-cli)](https://pypi.org/project/kimi-cli/)
-[![Downloads](https://img.shields.io/pypi/dw/kimi-cli)](https://pypistats.org/packages/kimi-cli)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/MoonshotAI/kimi-cli)
+[Kimi Code CLI](https://github.com/MoonshotAI/kimi-code) | [Migration Guide](https://moonshotai.github.io/kimi-code/en/guides/migration) | [迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration) | [Legacy Docs](https://moonshotai.github.io/kimi-cli/en/)
 
-[Kimi Code](https://www.kimi.com/code/) | [Documentation](https://moonshotai.github.io/kimi-cli/en/) | [文档](https://moonshotai.github.io/kimi-cli/zh/)
+> [!CAUTION]
+> **This project has been archived and is no longer maintained.** Kimi CLI (Python) has been replaced by **[Kimi Code CLI](https://github.com/MoonshotAI/kimi-code)**, the next-generation terminal AI agent from the same team.
+>
+> - This repository is read-only. There will be no further releases, bug fixes, or security updates.
+> - Existing installations are no longer supported and will stop working. Please migrate as soon as possible.
+> - Please file issues, feature requests, and security reports for Kimi Code CLI at [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code).
+>
+> 本项目已归档，不再维护。Python 版 Kimi CLI 已由 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code) 取代，旧版将无法继续使用，请参考 [迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration) 尽快升级。
 
-> [!IMPORTANT]
-> **Kimi CLI is evolving into [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code)** — the next-generation terminal AI agent from the same team. Installing Kimi Code CLI automatically migrates your configuration and sessions. This project will be gradually wound down; the docs and existing installations remain available.
+## Migrate to Kimi Code CLI
+
+1. Install Kimi Code CLI:
+
+   ```sh
+   # macOS / Linux
+   curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
+   ```
+
+   ```powershell
+   # Windows (PowerShell)
+   irm https://code.kimi.com/kimi-code/install.ps1 | iex
+   ```
+
+   Also available via Homebrew (`brew install kimi-code`) and npm (`npm install -g @moonshot-ai/kimi-code`).
+
+2. Open a new terminal and run `kimi`. On first launch, it detects your Kimi CLI data in `~/.kimi/` and offers to migrate your config, MCP servers, input history, and sessions. You can also run `kimi migrate` at any time. Your original data in `~/.kimi/` is never modified or deleted.
+3. Run `/login` again, and re-authorize your MCP servers. Login credentials, MCP authorizations, and Kimi CLI plugins are not migrated.
+4. Uninstall the legacy CLI after migrating, e.g. `uv tool uninstall kimi-cli` or `brew uninstall kimi-cli`.
+
+See the full [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration) for details.
+
+## Packages in this repository
+
+All packages below are archived together with this repository. Published versions remain on PyPI, but will not receive any further updates.
+
+| Package | Status |
+|---|---|
+| [`kimi-cli`](https://pypi.org/project/kimi-cli/) | Archived. Replaced by Kimi Code CLI |
+| [`kimi-code`](https://pypi.org/project/kimi-code/) on PyPI | Archived. A legacy alias of `kimi-cli`, **not** the new Kimi Code CLI |
+| [`kosong`](https://pypi.org/project/kosong/) | Archived |
+| [`pykaos`](https://pypi.org/project/pykaos/) | Archived |
+| [`kimi-sdk`](https://pypi.org/project/kimi-sdk/) | Archived |
+
+## License
+
+The source code remains available under the [Apache License 2.0](LICENSE).
+
+Thank you to everyone who used Kimi CLI, reported issues, and contributed code. Your feedback shaped Kimi Code CLI.
+
+<details>
+<summary>Original README (legacy, for reference only)</summary>
 
 Kimi CLI is an AI agent that runs in the terminal, helping you complete software development tasks and terminal operations. It can read and edit code, execute shell commands, search and fetch web pages, and autonomously plan and adjust actions during execution.
 
@@ -175,3 +218,5 @@ make help  # show all make targets
 ```
 
 Note: `make build` and `make build-bin` automatically run `make build-web` to embed the web UI.
+
+</details>
