@@ -123,3 +123,7 @@ class EchoStreamedMessage(StreamedMessage):
     @property
     def usage(self) -> TokenUsage | None:
         return self._usage
+
+    @property
+    def trace_id(self) -> str | None:
+        return None

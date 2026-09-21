@@ -2,16 +2,30 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast, get_args
 
-from kosong.chat_provider import ChatProvider
+from kosong.chat_provider import ChatProvider, StreamedMessage, ThinkingEffort
+from kosong.message import (
+    AudioURLPart,
+    ImageURLPart,
+    Message,
+    TextPart,
+    ThinkPart,
+    VideoURLPart,
+)
+from kosong.tooling import Tool
+from kosong.utils.aio import Callback, callback
 from pydantic import SecretStr
 
 from kimi_cli.constant import USER_AGENT
+from kimi_cli.utils.logging import logger
 
 if TYPE_CHECKING:
+    from kosong.chat_provider.kimi import Kimi
+
     from kimi_cli.auth.oauth import OAuthManager
     from kimi_cli.config import Config, LLMModel, LLMProvider
 
@@ -30,6 +44,9 @@ type ProviderType = Literal[
 
 type ModelCapability = Literal["image_in", "video_in", "thinking", "always_thinking"]
 ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
+DEFAULT_UNKNOWN_CONTEXT_COMPLETION_TOKENS = 32_000
+DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN = 1_024
+MEDIA_TOKEN_ESTIMATE = 2_000
 
 
 @dataclass(slots=True)
@@ -45,11 +62,214 @@ class LLM:
         return self.chat_provider.model_name
 
 
-def model_display_name(model_name: str | None) -> str:
+class _GenerationOverrideProvider(Protocol):
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
+    ) -> StreamedMessage: ...
+
+
+@dataclass(slots=True)
+class _KimiRequestChatProvider:
+    """Adapt a Kimi-backed provider to the standard provider interface for one request."""
+
+    _provider: ChatProvider
+    _generation_overrides: Mapping[str, Any]
+    name: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.name = self._provider.name
+
+    @property
+    def model_name(self) -> str:
+        return self._provider.model_name
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return self._provider.thinking_effort
+
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> StreamedMessage:
+        provider = cast(_GenerationOverrideProvider, self._provider)
+        return await provider.generate(
+            system_prompt,
+            tools,
+            history,
+            generation_overrides=self._generation_overrides,
+        )
+
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
+        return type(self)(
+            self._provider.with_thinking(effort),
+            self._generation_overrides,
+        )
+
+
+@dataclass(slots=True)
+class _TraceCallbackChatProvider:
+    _provider: ChatProvider
+    _on_trace_id: Callback[[str | None], None]
+    name: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.name = self._provider.name
+
+    @property
+    def model_name(self) -> str:
+        return self._provider.model_name
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return self._provider.thinking_effort
+
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> StreamedMessage:
+        await callback(self._on_trace_id, None)
+        try:
+            stream = await self._provider.generate(system_prompt, tools, history)
+        except BaseException as error:
+            if trace_id := getattr(error, "trace_id", None):
+                await callback(self._on_trace_id, trace_id)
+            raise
+        await callback(self._on_trace_id, getattr(stream, "trace_id", None))
+        return stream
+
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
+        return type(self)(self._provider.with_thinking(effort), self._on_trace_id)
+
+
+def find_kimi_provider(chat_provider: ChatProvider) -> Kimi | None:
+    """Return the Kimi provider backing a supported provider wrapper."""
+    from kosong.chat_provider.chaos import ChaosChatProvider
+    from kosong.chat_provider.kimi import Kimi
+
+    provider = chat_provider
+    while isinstance(provider, ChaosChatProvider):
+        provider = provider.wrapped_provider
+    return provider if isinstance(provider, Kimi) else None
+
+
+def with_kimi_generation_overrides(
+    chat_provider: ChatProvider,
+    generation_overrides: Mapping[str, Any] | None,
+) -> ChatProvider:
+    """Apply request-scoped generation overrides only to Kimi-backed providers."""
+    if not generation_overrides or find_kimi_provider(chat_provider) is None:
+        return chat_provider
+    return _KimiRequestChatProvider(chat_provider, dict(generation_overrides))
+
+
+def with_trace_callback(
+    chat_provider: ChatProvider,
+    on_trace_id: Callback[[str | None], None],
+) -> ChatProvider:
+    return _TraceCallbackChatProvider(chat_provider, on_trace_id)
+
+
+def compute_max_completion_tokens(
+    *,
+    max_context_size: int,
+    input_tokens: int,
+    response_budget: int | None,
+    fallback_budget: int = DEFAULT_UNKNOWN_CONTEXT_COMPLETION_TOKENS,
+) -> int:
+    """Compute the Kimi completion cap from the hard cap and remaining context."""
+    if max_context_size <= 0:
+        return max(1, response_budget if response_budget is not None else fallback_budget)
+
+    input_tokens = max(0, input_tokens)
+    remaining = max(1, max_context_size - input_tokens)
+    requested = response_budget if response_budget is not None else max_context_size
+    return max(1, min(requested, remaining))
+
+
+def estimate_request_tokens(
+    system_prompt: str,
+    tools: Sequence[Tool],
+    history: Sequence[Message],
+) -> int:
+    """Estimate all token-bearing parts of a chat request.
+
+    The estimate is deliberately request-scoped: unlike ``Context.token_count_with_pending``,
+    it includes the system prompt, tool schemas, message metadata, tool calls, and media. Exact
+    tokenization is provider/model specific, so callers should still reserve a small safety
+    margin when using the result to derive a hard completion limit.
+    """
+    return (
+        _estimate_text_tokens(system_prompt)
+        + sum(_estimate_tool_tokens(tool) for tool in tools)
+        + sum(_estimate_message_tokens(message) for message in history)
+    )
+
+
+def estimate_message_tokens(messages: Sequence[Message]) -> int:
+    """Estimate token-bearing content for messages added outside the main context."""
+    return sum(_estimate_message_tokens(message) for message in messages)
+
+
+def _estimate_text_tokens(text: str) -> int:
+    ascii_count = sum(char.isascii() for char in text)
+    non_ascii_count = len(text) - ascii_count
+    return (ascii_count + 3) // 4 + non_ascii_count
+
+
+def _estimate_tool_tokens(tool: Tool) -> int:
+    return (
+        _estimate_text_tokens(tool.name)
+        + _estimate_text_tokens(tool.description)
+        + _estimate_text_tokens(
+            json.dumps(tool.parameters, ensure_ascii=False, separators=(",", ":"))
+        )
+    )
+
+
+def _estimate_message_tokens(message: Message) -> int:
+    total = _estimate_text_tokens(message.role)
+    if message.name:
+        total += _estimate_text_tokens(message.name)
+    if message.tool_call_id:
+        total += _estimate_text_tokens(message.tool_call_id)
+
+    for part in message.content:
+        if isinstance(part, TextPart):
+            total += _estimate_text_tokens(part.text)
+        elif isinstance(part, ThinkPart):
+            total += _estimate_text_tokens(part.think)
+        elif isinstance(part, (ImageURLPart, AudioURLPart, VideoURLPart)):
+            total += MEDIA_TOKEN_ESTIMATE
+        else:
+            total += _estimate_text_tokens(part.model_dump_json(exclude_none=True))
+
+    for tool_call in message.tool_calls or ():
+        total += _estimate_text_tokens(tool_call.id)
+        total += _estimate_text_tokens(tool_call.function.name)
+        total += _estimate_text_tokens(tool_call.function.arguments or "")
+        if tool_call.extras:
+            total += _estimate_text_tokens(
+                json.dumps(tool_call.extras, ensure_ascii=False, separators=(",", ":"))
+            )
+    return total
+
+
+def model_display_name(model_name: str | None, model: LLMModel | None = None) -> str:
+    if model is not None and model.display_name:
+        return model.display_name
     if not model_name:
         return ""
     if model_name in ("kimi-for-coding", "kimi-code"):
-        return f"{model_name} (powered by kimi-k2.5)"
+        return "kimi-for-coding"
     return model_name
 
 
@@ -114,6 +334,10 @@ def create_llm(
     if provider.type not in {"_echo", "_scripted_echo"} and (
         not provider.base_url or not model.model
     ):
+        logger.warning(
+            "Cannot create LLM: missing base_url or model (provider_type={provider_type})",
+            provider_type=provider.type,
+        )
         return None
 
     resolved_api_key = (
@@ -140,18 +364,40 @@ def create_llm(
                 gen_kwargs["temperature"] = float(temperature)
             if top_p := os.getenv("KIMI_MODEL_TOP_P"):
                 gen_kwargs["top_p"] = float(top_p)
-            if max_tokens := os.getenv("KIMI_MODEL_MAX_TOKENS"):
-                gen_kwargs["max_tokens"] = int(max_tokens)
+            for env_name in (
+                "KIMI_MODEL_MAX_COMPLETION_TOKENS",
+                "KIMI_MODEL_MAX_TOKENS",
+            ):
+                raw_max_completion_tokens = os.getenv(env_name)
+                if not raw_max_completion_tokens:
+                    continue
+                try:
+                    max_completion_tokens = int(raw_max_completion_tokens)
+                except ValueError:
+                    continue
+                # ``None`` is an explicit opt-out marker consumed by KimiSoul. Kimi's
+                # request serializer omits it when no per-call override is supplied.
+                gen_kwargs["max_completion_tokens"] = (
+                    max_completion_tokens if max_completion_tokens > 0 else None
+                )
+                break
 
             if gen_kwargs:
                 chat_provider = chat_provider.with_generation_kwargs(**gen_kwargs)
         case "openai_legacy":
             from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
 
+            reasoning_key = (
+                provider.reasoning_key
+                if provider.reasoning_key is not None
+                else "reasoning_content"
+            )
             chat_provider = OpenAILegacy(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                reasoning_key=reasoning_key,
+                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
@@ -160,6 +406,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic
@@ -170,6 +417,7 @@ def create_llm(
                 api_key=resolved_api_key,
                 default_max_tokens=50000,
                 metadata={"user_id": session_id} if session_id else None,
+                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
         case "google_genai" | "gemini":
             from kosong.contrib.chat_provider.google_genai import GoogleGenAI
@@ -178,6 +426,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
         case "vertexai":
             from kosong.contrib.chat_provider.google_genai import GoogleGenAI
@@ -188,6 +437,7 @@ def create_llm(
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
                 vertexai=True,
+                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
         case "_echo":
             from kosong.chat_provider.echo import EchoChatProvider
@@ -222,11 +472,25 @@ def create_llm(
     capabilities = derive_model_capabilities(model)
 
     # Apply thinking if specified or if model always requires thinking
-    if "always_thinking" in capabilities or (thinking is True and "thinking" in capabilities):
+    thinking_on = "always_thinking" in capabilities or (
+        thinking is True and "thinking" in capabilities
+    )
+    if thinking_on:
         chat_provider = chat_provider.with_thinking("high")
     elif thinking is False:
         chat_provider = chat_provider.with_thinking("off")
     # If thinking is None and model doesn't always think, leave as-is (default behavior)
+
+    # Apply Moonshot-specific ``thinking.keep`` (preserved thinking) only when
+    # the model is actually in thinking mode; otherwise the API would see a
+    # ``thinking.keep`` without an accompanying ``thinking.type`` it honors.
+    if thinking_on and provider.type == "kimi":
+        from kosong.chat_provider.kimi import Kimi
+
+        if isinstance(chat_provider, Kimi) and (
+            thinking_keep := os.getenv("KIMI_MODEL_THINKING_KEEP")
+        ):
+            chat_provider = chat_provider.with_extra_body({"thinking": {"keep": thinking_keep}})
 
     return LLM(
         chat_provider=chat_provider,

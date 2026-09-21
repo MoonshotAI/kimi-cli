@@ -24,7 +24,7 @@ from tests_e2e.wire_helpers import make_work_dir as _make_work_dir
 from tests_e2e.wire_helpers import write_scripted_config as write_scripted_config
 
 DEFAULT_TIMEOUT = 15.0
-PROMPT_SYMBOL = "✨"
+PROMPT_SYMBOL = "── input"
 OSC_RE = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 OTHER_ESCAPE_RE = re.compile(r"\x1b[@-_]")

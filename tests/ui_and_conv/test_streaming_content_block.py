@@ -299,3 +299,122 @@ class TestContentBlockCommitment:
         # After first commit, bullet should be marked as printed
         if block._committed_len > 0:
             assert block._has_printed_bullet
+
+
+# ---------------------------------------------------------------------------
+# show_thinking_stream toggle (legacy streaming reasoning preview)
+# ---------------------------------------------------------------------------
+
+
+class TestShowThinkingStream:
+    """The ``show_thinking_stream`` flag opts back into the pre-1.32 behavior
+    where thinking content is rendered as a 6-line scrolling preview during
+    streaming and committed to history as full markdown when the block ends.
+    The default (``False``) keeps the compact 'Thinking ...' indicator and
+    one-line ``Thought for ...`` trace introduced in 1.32.
+    """
+
+    def test_compact_mode_compose_returns_compact_text(self):
+        from rich.text import Text
+
+        block = _ContentBlock(is_think=True)
+        block.append("Some reasoning content")
+        result = block.compose()
+        assert isinstance(result, Text)
+        assert "Thinking" in result.plain
+        # Compact mode never renders the raw reasoning text
+        assert "reasoning content" not in result.plain
+
+    def test_stream_mode_compose_returns_group_with_preview(self):
+        from rich.console import Group
+
+        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        block.append("line 1\nline 2\nline 3")
+        result = block.compose()
+        assert isinstance(result, Group)
+
+    def test_stream_mode_compose_no_pending_returns_spinner_only(self):
+        from rich.spinner import Spinner
+
+        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        # No content appended yet — should fall back to the bare spinner.
+        result = block.compose()
+        assert isinstance(result, Spinner)
+
+    def test_stream_mode_spinner_uses_thinking_label(self):
+        """Stream mode must restore the legacy 'Thinking...' spinner label."""
+        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        result = block.compose()
+        # Spinner.text is a Text — extract its plain string for assertion
+        text = result.text  # type: ignore[reportAttributeAccessIssue]
+        plain = text.plain if hasattr(text, "plain") else str(text)
+        assert "Thinking" in plain
+
+    def test_compact_mode_compose_final_returns_trace_line(self):
+        from rich.text import Text
+
+        block = _ContentBlock(is_think=True)
+        block.append("Some thought content")
+        result = block.compose_final()
+        assert isinstance(result, Text)
+        assert "Thought for" in result.plain
+        assert "tokens" in result.plain
+        # Compact trace must not contain the raw reasoning content
+        assert "thought content" not in result.plain
+
+    def test_stream_mode_compose_final_returns_markdown_bullet(self):
+        """Stream mode commits the full reasoning to history (legacy behavior)."""
+        from kimi_cli.utils.rich.columns import BulletColumns
+
+        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        block.append("Some thought content")
+        result = block.compose_final()
+        assert isinstance(result, BulletColumns)
+
+    def test_stream_mode_compose_final_empty_returns_empty_text(self):
+        from rich.text import Text
+
+        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        result = block.compose_final()
+        assert isinstance(result, Text)
+        assert result.plain == ""
+
+    def test_compact_mode_has_pending_with_content(self):
+        block = _ContentBlock(is_think=True)
+        block.append("anything")
+        assert block.has_pending()
+
+    def test_compact_mode_has_pending_without_content(self):
+        block = _ContentBlock(is_think=True)
+        assert not block.has_pending()
+
+    def test_stream_mode_has_pending_with_content(self):
+        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        block.append("anything")
+        assert block.has_pending()
+
+    def test_stream_mode_has_pending_without_content(self):
+        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        assert not block.has_pending()
+
+    def test_thinking_never_commits_in_either_mode(self):
+        """Thinking blocks must never commit incrementally regardless of mode."""
+        for stream in (False, True):
+            block = _ContentBlock(is_think=True, show_thinking_stream=stream)
+            block.append("First.\n\nSecond.\n\nThird.")
+            assert block._committed_len == 0
+
+    def test_preview_constant_is_six_lines(self):
+        """Stream preview window matches the historical 6-line tail."""
+        from kimi_cli.ui.shell.visualize._blocks import _THINKING_PREVIEW_LINES
+
+        assert _THINKING_PREVIEW_LINES == 6
+
+    def test_show_thinking_stream_ignored_for_composing_blocks(self):
+        """The flag only affects thinking blocks — composing path is unchanged."""
+        block_off = _ContentBlock(is_think=False, show_thinking_stream=False)
+        block_on = _ContentBlock(is_think=False, show_thinking_stream=True)
+        for block in (block_off, block_on):
+            block.append("hello\n\nworld")
+        # Both should commit identically
+        assert block_off._committed_len == block_on._committed_len

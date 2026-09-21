@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+
 from kimi_cli.utils.pyinstaller import datas, hiddenimports
 
 # Read codesign identity from environment variable (for macOS signing in CI)

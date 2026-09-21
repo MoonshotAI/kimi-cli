@@ -49,6 +49,7 @@ class ApprovalRuntime:
     def __init__(self) -> None:
         self._requests: dict[str, ApprovalRequestRecord] = {}
         self._waiters: dict[str, asyncio.Future[tuple[ApprovalResponseKind, str]]] = {}
+        self._waiter_counts: dict[str, int] = {}
         self._subscribers: dict[str, Callable[[ApprovalRuntimeEvent], None]] = {}
         self._root_wire_hub: RootWireHub | None = None
 
@@ -82,7 +83,9 @@ class ApprovalRuntime:
         self._publish_wire_request(request)
         return request
 
-    async def wait_for_response(self, request_id: str) -> tuple[ApprovalResponseKind, str]:
+    async def wait_for_response(
+        self, request_id: str, timeout: float | None = None
+    ) -> tuple[ApprovalResponseKind, str]:
         waiter = self._waiters.get(request_id)
         request = self._requests.get(request_id)
         if request is None:
@@ -95,15 +98,49 @@ class ApprovalRuntime:
                 return request.response, request.feedback
             waiter = asyncio.get_running_loop().create_future()
             self._waiters[request_id] = waiter
-        return await waiter
+        self._waiter_counts[request_id] = self._waiter_counts.get(request_id, 0) + 1
+        try:
+            if timeout is None:
+                return await asyncio.shield(waiter)
+            return await asyncio.wait_for(asyncio.shield(waiter), timeout=timeout)
+        except TimeoutError:
+            logger.warning(
+                "Approval request {id} timed out after {t}s",
+                id=request_id,
+                t=timeout,
+            )
+            # If this timeout is the only remaining observer, drop the shared
+            # waiter before cancelling so we do not later set_exception on an
+            # unobserved future. If other observers still exist, keep the
+            # shared waiter registered so they receive the cancellation too.
+            if self._waiter_counts.get(request_id, 0) <= 1:
+                self._waiters.pop(request_id, None)
+            self._cancel_request(request_id, feedback="approval timed out")
+            raise ApprovalCancelledError(request_id) from None
+        finally:
+            remaining = self._waiter_counts.get(request_id, 0) - 1
+            if remaining > 0:
+                self._waiter_counts[request_id] = remaining
+            else:
+                self._waiter_counts.pop(request_id, None)
+                if request.status == "pending" and self._waiters.get(request_id) is waiter:
+                    self._waiters.pop(request_id, None)
 
-    def resolve(self, request_id: str, response: ApprovalResponseKind, feedback: str = "") -> bool:
+    def resolve(
+        self,
+        request_id: str,
+        response: ApprovalResponseKind,
+        feedback: str = "",
+        *,
+        approved_via_session_cache: bool = False,
+    ) -> bool:
         request = self._requests.get(request_id)
         if request is None or request.status != "pending":
             return False
         request.status = "resolved"
         request.response = response
         request.feedback = feedback
+        request.approved_via_session_cache = approved_via_session_cache
         import time
 
         request.resolved_at = time.time()
@@ -113,6 +150,23 @@ class ApprovalRuntime:
         self._publish_event(ApprovalRuntimeEvent(kind="request_resolved", request=request))
         self._publish_wire_response(request_id, response, feedback)
         return True
+
+    def _cancel_request(self, request_id: str, feedback: str = "") -> None:
+        """Cancel a single pending request by ID."""
+        import time
+
+        request = self._requests.get(request_id)
+        if request is None or request.status != "pending":
+            return
+        request.status = "cancelled"
+        request.response = "reject"
+        request.feedback = feedback
+        request.resolved_at = time.time()
+        waiter = self._waiters.pop(request_id, None)
+        if waiter is not None and not waiter.done():
+            waiter.set_exception(ApprovalCancelledError(request_id))
+        self._publish_event(ApprovalRuntimeEvent(kind="request_resolved", request=request))
+        self._publish_wire_response(request_id, "reject", feedback)
 
     def cancel_by_source(self, source_kind: ApprovalSourceKind, source_id: str) -> int:
         cancelled = 0

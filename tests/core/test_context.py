@@ -155,6 +155,48 @@ async def test_restore_with_all_record_types(tmp_path: Path) -> None:
     assert len(ctx.history) == 2
 
 
+@pytest.mark.asyncio
+async def test_restore_skips_malformed_trailing_line(tmp_path: Path) -> None:
+    path = tmp_path / "context.jsonl"
+    valid_lines = [
+        {"role": "_system_prompt", "content": "Frozen prompt"},
+        _message_dict("user", "Hello"),
+    ]
+    path.write_text(
+        "".join(json.dumps(line) + "\n" for line in valid_lines)
+        + '{"role":"assistant","content":"unterminated\n',
+        encoding="utf-8",
+    )
+
+    ctx = Context(file_backend=path)
+    restored = await ctx.restore()
+
+    assert restored is True
+    assert ctx.system_prompt == "Frozen prompt"
+    assert len(ctx.history) == 1
+    assert ctx.history[0].role == "user"
+
+
+@pytest.mark.asyncio
+async def test_restore_skips_truncated_utf8_trailing_line(tmp_path: Path) -> None:
+    path = tmp_path / "context.jsonl"
+    valid_prefix = (
+        json.dumps({"role": "_system_prompt", "content": "Frozen prompt"}, ensure_ascii=False)
+        + "\n"
+        + json.dumps(_message_dict("user", "Hello"), ensure_ascii=False)
+        + "\n"
+    ).encode("utf-8")
+    path.write_bytes(valid_prefix + b'{"role":"assistant","content":"\xe4\xb8\n')
+
+    ctx = Context(file_backend=path)
+    restored = await ctx.restore()
+
+    assert restored is True
+    assert ctx.system_prompt == "Frozen prompt"
+    assert len(ctx.history) == 1
+    assert ctx.history[0].role == "user"
+
+
 # --- clear tests ---
 
 
@@ -236,6 +278,87 @@ async def test_revert_preserves_system_prompt_in_file(tmp_path: Path) -> None:
 
     lines = _read_lines(path)
     assert lines[0] == {"role": "_system_prompt", "content": "File preserved"}
+
+
+@pytest.mark.asyncio
+async def test_revert_skips_malformed_line_before_checkpoint(tmp_path: Path) -> None:
+    path = tmp_path / "context.jsonl"
+    path.write_text(
+        "".join(
+            [
+                json.dumps({"role": "_system_prompt", "content": "Recovered prompt"}) + "\n",
+                json.dumps(_message_dict("user", "Before bad line")) + "\n",
+                '{"role":"assistant","content":"unterminated\n',
+                json.dumps({"role": "_checkpoint", "id": 0}) + "\n",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    ctx = Context(file_backend=path)
+    await ctx.restore()
+    await ctx.revert_to(0)
+
+    lines = _read_lines(path)
+    assert lines == [
+        {"role": "_system_prompt", "content": "Recovered prompt"},
+        _message_dict("user", "Before bad line"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_revert_skips_structurally_invalid_json_object_before_checkpoint(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "context.jsonl"
+    path.write_text(
+        "".join(
+            [
+                json.dumps({"role": "_system_prompt", "content": "Recovered prompt"}) + "\n",
+                json.dumps(_message_dict("user", "Before bad line")) + "\n",
+                json.dumps({"oops": 1}) + "\n",
+                json.dumps({"role": "_checkpoint", "id": 0}) + "\n",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    ctx = Context(file_backend=path)
+    await ctx.restore()
+    await ctx.revert_to(0)
+
+    lines = _read_lines(path)
+    assert lines == [
+        {"role": "_system_prompt", "content": "Recovered prompt"},
+        _message_dict("user", "Before bad line"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_revert_skips_truncated_utf8_line_before_checkpoint(tmp_path: Path) -> None:
+    path = tmp_path / "context.jsonl"
+    path.write_bytes(
+        (
+            json.dumps(
+                {"role": "_system_prompt", "content": "Recovered prompt"}, ensure_ascii=False
+            )
+            + "\n"
+            + json.dumps(_message_dict("user", "Before bad line"), ensure_ascii=False)
+            + "\n"
+        ).encode("utf-8")
+        + b'{"role":"assistant","content":"\xe4\xb8\n'
+        + (json.dumps({"role": "_checkpoint", "id": 0}) + "\n").encode("utf-8")
+    )
+
+    ctx = Context(file_backend=path)
+    await ctx.restore()
+    await ctx.revert_to(0)
+
+    lines = _read_lines(path)
+    assert lines == [
+        {"role": "_system_prompt", "content": "Recovered prompt"},
+        _message_dict("user", "Before bad line"),
+    ]
 
 
 # --- round-trip tests ---

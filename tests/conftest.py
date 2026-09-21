@@ -104,6 +104,8 @@ def builtin_args(temp_work_dir: KaosPath) -> BuiltinSystemPromptArgs:
         KIMI_AGENTS_MD="Test agents content",
         KIMI_SKILLS="No skills found.",
         KIMI_ADDITIONAL_DIRS_INFO="",
+        KIMI_OS="macOS",
+        KIMI_SHELL="bash (`/bin/bash`)",
     )
 
 
@@ -148,8 +150,8 @@ def environment() -> Environment:
             os_kind="Windows",
             os_arch="x86_64",
             os_version="1.0",
-            shell_name="Windows PowerShell",
-            shell_path=KaosPath("powershell.exe"),
+            shell_name="bash",
+            shell_path=KaosPath(r"C:\Program Files\Git\bin\bash.exe"),
         )
     else:
         return Environment(
@@ -247,9 +249,9 @@ def think_tool() -> Think:
 
 
 @pytest.fixture
-def set_todo_list_tool() -> SetTodoList:
+def set_todo_list_tool(runtime: Runtime) -> SetTodoList:
     """Create a SetTodoList tool instance."""
-    return SetTodoList()
+    return SetTodoList(runtime)
 
 
 @pytest.fixture

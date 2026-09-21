@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 
-from kimi_cli.utils.diff import build_diff_blocks, format_unified_diff
+from kimi_cli.utils.diff import (
+    _build_diff_blocks_sync as build_diff_blocks,
+)
+from kimi_cli.utils.diff import (
+    format_unified_diff,
+)
 from kimi_cli.wire.types import DiffDisplayBlock
 
 

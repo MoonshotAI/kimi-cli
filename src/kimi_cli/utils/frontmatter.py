@@ -48,3 +48,23 @@ def read_frontmatter(path: Path) -> dict[str, Any] | None:
         path: Path to an existing file that may contain frontmatter.
     """
     return parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+
+
+def strip_frontmatter(text: str) -> str:
+    """Return *text* with any leading YAML frontmatter block removed.
+
+    Mirrors the detection rule used by :func:`parse_frontmatter`: a frontmatter
+    block starts with ``---`` on the first line and ends at the next ``---``
+    line. Returns the original text unchanged when no valid frontmatter is
+    found. Sharing this helper lets callers skip the frontmatter in exactly the
+    same way :func:`parse_frontmatter` does, avoiding duplicate logic.
+    """
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return text
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return "".join(lines[i + 1 :])
+    # Malformed frontmatter with no closing ``---``; parse_frontmatter returns
+    # None in that case, so we treat the whole input as body.
+    return text

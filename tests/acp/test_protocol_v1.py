@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
+
 import acp
 import pytest
 
 from kimi_cli.acp.version import CURRENT_VERSION
 
-from .conftest import ACPTestClient
+from .conftest import ACPTestClient, _kimi_bin, _repo_root
 
 pytestmark = pytest.mark.asyncio
 
@@ -146,6 +148,52 @@ async def test_resume_session_not_found(
             cwd=str(work_dir),
             session_id="non-existent-session-id",
         )
+
+
+async def test_load_session_replays_history(acp_share_dir, tmp_path):
+    """session/load should replay persisted messages after the ACP server restarts."""
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+    env = {**os.environ, "KIMI_SHARE_DIR": str(acp_share_dir)}
+
+    client1 = ACPTestClient()
+    async with acp.spawn_agent_process(
+        client1,
+        _kimi_bin(),
+        "acp",
+        env=env,
+        cwd=str(_repo_root()),
+        use_unstable_protocol=True,
+    ) as (conn, _):
+        await conn.initialize(protocol_version=1)
+        session_resp = await conn.new_session(cwd=str(work_dir))
+        await conn.prompt(
+            prompt=[acp.text_block("Hello")],
+            session_id=session_resp.session_id,
+        )
+
+    client2 = ACPTestClient()
+    async with acp.spawn_agent_process(
+        client2,
+        _kimi_bin(),
+        "acp",
+        env=env,
+        cwd=str(_repo_root()),
+        use_unstable_protocol=True,
+    ) as (conn, _):
+        await conn.initialize(protocol_version=1)
+        await conn.load_session(cwd=str(work_dir), session_id=session_resp.session_id)
+
+    update_types = [update.session_update for update in client2.updates]
+    update_texts = [
+        update.content.text
+        for update in client2.updates
+        if hasattr(update, "content") and update.content.type == "text"
+    ]
+    assert "user_message_chunk" in update_types
+    assert "agent_message_chunk" in update_types
+    assert "Hello" in update_texts
+    assert "Hello from scripted echo!" in update_texts
 
 
 async def test_cancel_session(

@@ -177,3 +177,30 @@ print("ok")
 """
     )
     assert proc.stdout.strip() == "ok"
+
+
+def test_cli_module_entrypoint_handles_git_bash_not_found() -> None:
+    proc = _run_python(
+        """
+import io
+import sys
+from contextlib import redirect_stderr
+
+import kimi_cli.cli.__main__ as cli_main
+from kimi_cli.utils.environment import GitBashNotFoundError
+
+def fake_cli(*_args, **_kwargs):
+    raise GitBashNotFoundError("install Git for Windows")
+
+cli_main.cli = fake_cli
+
+stderr = io.StringIO()
+with redirect_stderr(stderr):
+    exit_code = cli_main.main(["--print", "hello"])
+
+assert exit_code == 1
+assert stderr.getvalue() == "Error: install Git for Windows\\n"
+print("ok")
+"""
+    )
+    assert proc.stdout.strip() == "ok"

@@ -19,39 +19,100 @@ Kimi Code CLI 支持两种扩展机制：
 
 ## Skill 发现
 
-Kimi Code CLI 采用分层加载机制发现 Skills，按以下优先级加载（后加载的会覆盖同名 Skill）：
+Kimi Code CLI 采用分层加载机制发现 Skills。当同名 Skill 存在于多个作用域时，越具体的作用域优先：
+
+**Project > User > Extra > Built-in**
 
 **内置 Skills**
 
-随软件包安装的 Skills，提供基础能力。
+随软件包安装的 Skills，提供基础能力。优先级最低。
 
 **用户级 Skills**
 
-存放在用户主目录中，在所有项目中生效。Kimi Code CLI 会按优先级检查以下目录，使用第一个存在的目录：
+存放在用户主目录中，在所有项目中生效。候选目录分为两组，每组内按优先级选取第一个存在的目录，两组的结果独立合并（品牌组特异性更高，优先级更高）：
 
-1. `~/.config/agents/skills/`（推荐）
-2. `~/.agents/skills/`
-3. `~/.kimi/skills/`
-4. `~/.claude/skills/`
-5. `~/.codex/skills/`
+- **品牌组**（互斥选一）：
+  1. `~/.kimi/skills/`
+  2. `~/.claude/skills/`
+  3. `~/.codex/skills/`
+- **通用组**（互斥选一）：
+  1. `~/.config/agents/skills/`（推荐）
+  2. `~/.agents/skills/`
+
+两组分别选出目录后合并加载。当同名 Skill 同时存在于品牌组和通用组时，品牌组的版本优先。
+
+默认情况下，**所有存在的品牌目录都会被加载并合并**，同名 Skill 按 kimi > claude > codex 的优先级解析（通用组不受影响）。这一行为由 `merge_all_available_skills` 控制，其默认值为 `true`：
+
+```toml
+# 默认值；合并所有已存在的品牌目录。
+merge_all_available_skills = true
+```
+
+如需恢复旧的"仅取优先级最高的那个品牌目录"行为（例如只使用 kimi，缺失时回退到 claude，再缺失时回退到 codex），可将其显式设为 `false`：
+
+```toml
+merge_all_available_skills = false
+```
 
 **项目级 Skills**
 
-存放在项目目录中，仅在该项目工作目录下生效。Kimi Code CLI 会按优先级检查以下目录，使用第一个存在的目录：
+存放在项目目录中，在该项目内生效。候选路径以**项目根**为起点（即工作目录向上最近的包含 `.git` 的祖先目录；找不到时回退到工作目录本身），这样即使从 monorepo 的某个子 package 内启动 kimi-cli，仓库根目录下的 Skills 也能被正确识别。同样分为两组独立查找：
 
-1. `.agents/skills/`（推荐）
-2. `.kimi/skills/`
-3. `.claude/skills/`
-4. `.codex/skills/`
+- **品牌组**（互斥选一）：
+  1. `.kimi/skills/`
+  2. `.claude/skills/`
+  3. `.codex/skills/`
+- **通用组**：`.agents/skills/`
 
-你也可以通过 `--skills-dir` 参数追加额外的 Skills 目录。该参数可重复指定，追加的目录会与自动发现的目录合并：
+`merge_all_available_skills` 配置对项目层同样生效。
+
+你也可以通过 `--skills-dir` 参数指定额外的 Skills 目录。该参数可重复指定，指定后将替代自动发现的用户级和项目级目录：
 
 ```sh
 kimi --skills-dir /path/to/my-skills --skills-dir /path/to/more-skills
 ```
 
+**额外 Skills 目录（追加式）**
+
+如果希望在**内置 / 用户级 / 项目级**自动发现的基础上**追加**自定义 Skills 目录（而不是替代它们），可在配置中设置 `extra_skill_dirs`：
+
+```toml
+extra_skill_dirs = [
+    "~/my-skills-collection",   # `~` 会展开为 $HOME
+    ".claude/plugins/my-skills", # 相对路径以“项目根”为基准解析
+    "/opt/team-shared/skills",  # 绝对路径原样使用
+]
+```
+
+每一项可以是绝对路径、`~` 前缀路径，或相对于项目根（即 `work_dir` 向上第一个包含 `.git` 的目录）的相对路径。不存在的条目会被静默跳过。从这些目录发现的 Skills 在系统提示中归入 `Extra` 作用域。
+
+**Skills 在系统提示中的呈现**
+
+发现的 Skills 按作用域分组注入系统提示（`Project` / `User` / `Extra` / `Built-in`）；空分组不渲染。这样 AI 就能区分"项目里的 skill"和"用户级的 skill"，避免推理时把两者混为一谈。
+
+**扁平 `.md` 形式的 Skill**
+
+除了标准的 `<name>/SKILL.md` 子目录结构，Skills 目录下单个 `.md` 文件也会被识别为一个 Skill。`name` 默认取文件名去掉 `.md`。
+
+```
+~/my-skills-collection/
+├── demo-ui-components.md    # 扁平：name = "demo-ui-components"
+└── deploy/                   # 子目录：name = "deploy"
+    └── SKILL.md
+```
+
+当同一目录下扁平 `.md` 和子目录形式同名时，以子目录为准，并记录一条警告日志。
+
+**description 解析规则**
+
+无论子目录还是扁平形式，每个 Skill 的 `description` 都走同一条链：
+
+1. Frontmatter 的 `description:` 字段（推荐 —— 遵循 [SKILL.md 规范](https://agentskills.io/specification)）
+2. 正文第一个非空行（回退；超过 240 字符会被截断）
+3. `"No description provided."`（兜底）
+
 ::: tip 提示
-Skills 路径独立于 [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir)。`KIMI_SHARE_DIR` 用于自定义配置、会话、日志等运行时数据的存储位置，不影响 Skills 的搜索路径。Skills 是跨工具共享的能力扩展（支持 Kimi CLI、Claude、Codex 等多个工具共用），与应用运行时数据是不同类型的数据。如需追加额外的 Skills 路径，请使用 `--skills-dir` 参数。
+Skills 路径独立于 [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir)。`KIMI_SHARE_DIR` 用于自定义配置、会话、日志等运行时数据的存储位置，不影响 Skills 的搜索路径。Skills 是跨工具共享的能力扩展（支持 Kimi CLI、Claude、Codex 等多个工具共用），与应用运行时数据是不同类型的数据。如需自定义 Skills 路径，请使用 `--skills-dir` 参数或 `extra_skill_dirs` 配置。
 :::
 
 ## 内置 Skills

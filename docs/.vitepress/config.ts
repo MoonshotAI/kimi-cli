@@ -50,6 +50,7 @@ export default withMermaid(defineConfig({
               items: [
                 { text: 'Model Context Protocol', link: '/zh/customization/mcp' },
                 { text: '插件 (Beta)', link: '/zh/customization/plugins' },
+                { text: 'Hooks (Beta)', link: '/zh/customization/hooks' },
                 { text: 'Agent Skills', link: '/zh/customization/skills' },
                 { text: 'Agent 与子 Agent', link: '/zh/customization/agents' },
                 { text: 'Print 模式', link: '/zh/customization/print-mode' },
@@ -132,6 +133,7 @@ export default withMermaid(defineConfig({
               items: [
                 { text: 'Model Context Protocol', link: '/en/customization/mcp' },
                 { text: 'Plugins (Beta)', link: '/en/customization/plugins' },
+                { text: 'Hooks (Beta)', link: '/en/customization/hooks' },
                 { text: 'Agent Skills', link: '/en/customization/skills' },
                 { text: 'Agents and Subagents', link: '/en/customization/agents' },
                 { text: 'Print Mode', link: '/en/customization/print-mode' },

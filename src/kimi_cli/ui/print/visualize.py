@@ -13,6 +13,7 @@ from kimi_cli.wire.types import (
     PlanDisplay,
     StepBegin,
     StepInterrupted,
+    StepRetry,
     ToolCall,
     ToolCallPart,
     ToolResult,
@@ -52,6 +53,9 @@ class JsonPrinter(Printer):
         match msg:
             case StepBegin() | StepInterrupted():
                 self.flush()
+            case StepRetry():
+                self._discard_assistant_message()
+                self._flush_notifications()
             case Notification() as notification:
                 if self._content_buffer or self._tool_call_buffer:
                     self._pending_notifications.append(notification)
@@ -81,6 +85,11 @@ class JsonPrinter(Printer):
             case _:
                 # ignore other messages
                 pass
+
+    def _discard_assistant_message(self) -> None:
+        self._content_buffer.clear()
+        self._tool_call_buffer.clear()
+        self._last_tool_call = None
 
     def _flush_assistant_message(self) -> None:
         if not self._content_buffer and not self._tool_call_buffer:
@@ -116,7 +125,7 @@ class FinalOnlyTextPrinter(Printer):
 
     def feed(self, msg: WireMessage) -> None:
         match msg:
-            case StepBegin() | StepInterrupted():
+            case StepBegin() | StepInterrupted() | StepRetry():
                 self._content_buffer.clear()
             case ContentPart() as part:
                 _merge_content(self._content_buffer, part)
@@ -139,7 +148,7 @@ class FinalOnlyJsonPrinter(Printer):
 
     def feed(self, msg: WireMessage) -> None:
         match msg:
-            case StepBegin() | StepInterrupted():
+            case StepBegin() | StepInterrupted() | StepRetry():
                 self._content_buffer.clear()
             case ContentPart() as part:
                 _merge_content(self._content_buffer, part)

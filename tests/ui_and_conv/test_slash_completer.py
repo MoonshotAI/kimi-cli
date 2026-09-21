@@ -17,6 +17,7 @@ from kimi_cli.ui.shell.prompt import (
     _find_prompt_float_container,
     _wrap_to_width,
 )
+from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 from kimi_cli.utils.slashcmd import SlashCommand
 
 
@@ -47,8 +48,8 @@ def _completions(completer: SlashCommandCompleter, text: str):
     return list(completer.get_completions(document, event))
 
 
-def test_exact_command_match_hides_completions():
-    """Exact matches should not show completions."""
+def test_exact_command_match_keeps_completion_visible():
+    """Exact command matches should stay visible while the cursor is in the slash token."""
     completer = SlashCommandCompleter(
         [
             _make_command("mcp"),
@@ -57,23 +58,36 @@ def test_exact_command_match_hides_completions():
         ]
     )
 
-    texts = _completion_texts(completer, "/mcp")
+    completions = _completions(completer, "/mcp")
 
-    assert not texts
+    assert completions[0].text == "/mcp "
+    assert completions[0].display_text == "/mcp"
+    assert "/mcp-server" in [completion.text for completion in completions]
 
 
-def test_exact_alias_match_hides_completions():
-    """Exact alias matches should not show completions."""
+def test_exact_single_command_match_adds_space_to_avoid_noop_completion():
+    completer = SlashCommandCompleter([_make_command("help")])
+
+    completions = _completions(completer, "/help")
+
+    assert len(completions) == 1
+    assert completions[0].text == "/help "
+    assert completions[0].display_text == "/help"
+
+
+def test_exact_alias_match_shows_canonical_completion():
+    """Exact alias matches should offer the canonical command."""
     completer = SlashCommandCompleter(
         [
             _make_command("help", aliases=["h"]),
-            _make_command("history"),
         ]
     )
 
-    texts = _completion_texts(completer, "/h")
+    completions = _completions(completer, "/h")
 
-    assert not texts
+    assert len(completions) == 1
+    assert completions[0].text == "/help"
+    assert completions[0].display_text == "/help (h)"
 
 
 def test_should_complete_only_for_root_slash_token():
@@ -82,6 +96,7 @@ def test_should_complete_only_for_root_slash_token():
     assert not SlashCommandCompleter.should_complete(Document(text="test /he", cursor_position=8))
     assert not SlashCommandCompleter.should_complete(Document(text="@src", cursor_position=4))
     assert not SlashCommandCompleter.should_complete(Document(text="/he next", cursor_position=8))
+    assert not SlashCommandCompleter.should_complete(Document(text="/help ", cursor_position=6))
 
 
 def test_completion_display_uses_canonical_command_name():
@@ -98,6 +113,50 @@ def test_completion_display_uses_canonical_command_name():
     assert completions[0].text == "/help"
     assert completions[0].display_text == "/help"
     assert completions[0].display_meta_text == "help command"
+
+
+def test_alias_completion_display_uses_canonical_name_and_alias_hint():
+    completer = SlashCommandCompleter(
+        [
+            _make_command("clear", aliases=["reset"]),
+        ]
+    )
+
+    completions = _completions(completer, "/re")
+
+    assert len(completions) == 1
+    assert completions[0].text == "/clear"
+    assert completions[0].display_text == "/clear (reset)"
+
+
+def test_skill_completion_path_still_returns_registered_skill_command():
+    completer = SlashCommandCompleter(
+        [
+            _make_command("skill:demo"),
+            _make_command("help"),
+        ]
+    )
+
+    assert _completion_texts(completer, "/skill:de") == ["/skill:demo"]
+    assert _completion_texts(completer, "/skill:demo") == ["/skill:demo "]
+
+
+def test_flow_completion_path_still_returns_registered_flow_command():
+    completer = SlashCommandCompleter(
+        [
+            _make_command("flow:demo"),
+            _make_command("help"),
+        ]
+    )
+
+    assert _completion_texts(completer, "/flow:de") == ["/flow:demo"]
+    assert _completion_texts(completer, "/flow:demo") == ["/flow:demo "]
+
+
+def test_btw_is_available_in_agent_slash_completion_menu():
+    completer = SlashCommandCompleter(shell_slash_registry.list_commands())
+
+    assert "/btw" in _completion_texts(completer, "/bt")
 
 
 def test_wrap_to_width_respects_width():

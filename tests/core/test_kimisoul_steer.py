@@ -384,6 +384,10 @@ class _SequenceStreamedMessage:
     def usage(self):
         return None
 
+    @property
+    def trace_id(self) -> str | None:
+        return None
+
 
 class _SequenceChatProvider:
     name = "sequence"

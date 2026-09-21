@@ -32,6 +32,12 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
         history: Sequence[Message],
         soul: KimiSoul,
     ) -> list[DynamicInjection]:
+        # Plan-mode workflow reminders are root-only. Subagents share the
+        # session's plan_mode flag for persistence/resume, but their YAMLs
+        # usually exclude EnterPlanMode/ExitPlanMode, so do not inject this
+        # workflow guidance into subagent contexts.
+        if soul.is_subagent:
+            return []
         if not soul.plan_mode:
             self._inject_count = 0
             return []
@@ -147,7 +153,6 @@ def _full_reminder(
             "5. Exit — call ExitPlanMode for user approval",
         ]
     )
-    # Multi-approach handling
     lines.extend(
         [
             "",
@@ -160,15 +165,11 @@ def _full_reminder(
             "This helps you write a better, more targeted plan rather than "
             "dumping multiple options for the user to sort through.",
             "When you do include multiple approaches in the plan, you MUST pass them "
-            "as the `options` parameter when calling ExitPlanMode, so the user can select which "
-            "approach to execute at approval time.",
-            "NEVER write multiple approaches in the plan and call ExitPlanMode without the "
-            "`options` parameter — the user will only see Approve/Reject with no way to choose.",
-        ]
-    )
-    # Turn ending constraint + anti-pattern
-    lines.extend(
-        [
+            "as the `options` parameter when calling ExitPlanMode, so the user can "
+            "select which approach to execute at approval time.",
+            "NEVER write multiple approaches in the plan and call ExitPlanMode without "
+            "the `options` parameter — the user will only see Approve/Reject with "
+            "no way to choose.",
             "",
             "AskUserQuestion is for clarifying missing requirements or user preferences "
             "that affect the plan.",
@@ -192,10 +193,12 @@ def _sparse_reminder(plan_file_path: str | None = None) -> str:
         parts.append(f"Read-only except plan file ({plan_file_path}).")
     else:
         parts.append("Read-only.")
+    parts.append(
+        "Use WriteFile or StrReplaceFile to modify the plan file. "
+        "If it does not exist yet, create it with WriteFile first."
+    )
     parts.extend(
         [
-            "Use WriteFile or StrReplaceFile to modify the plan file. "
-            "If it does not exist yet, create it with WriteFile first.",
             "Use AskUserQuestion to clarify user preferences "
             "when it helps you write a better plan.",
             "If the plan has multiple approaches, "
@@ -228,11 +231,15 @@ def _reentry_reminder(plan_file_path: str | None = None) -> str:
         "If same task: update the existing plan.",
         "4. You may use WriteFile or StrReplaceFile to modify the plan file. "
         "If the file does not exist yet, create it with WriteFile first.",
-        "5. Use AskUserQuestion to clarify missing requirements "
-        "or user preferences that affect the plan.",
-        "6. Always edit the plan file before calling ExitPlanMode.",
-        "",
-        "Your turn must end with either AskUserQuestion (to clarify requirements) "
-        "or ExitPlanMode (to request plan approval).",
     ]
+    lines.extend(
+        [
+            "5. Use AskUserQuestion to clarify missing requirements "
+            "or user preferences that affect the plan.",
+            "6. Always edit the plan file before calling ExitPlanMode.",
+            "",
+            "Your turn must end with either AskUserQuestion (to clarify requirements) "
+            "or ExitPlanMode (to request plan approval).",
+        ]
+    )
     return "\n".join(lines)

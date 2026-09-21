@@ -13,7 +13,8 @@ from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.diff import build_diff_blocks
-from kimi_cli.utils.path import is_within_workspace
+from kimi_cli.utils.logging import logger
+from kimi_cli.utils.path import is_within_workspace, kaos_path_from_user_input
 
 _BASE_DESCRIPTION = load_desc(Path(__file__).parent / "replace.md")
 
@@ -93,7 +94,7 @@ class StrReplaceFile(CallableTool2[Params]):
             )
 
         try:
-            p = KaosPath(params.path).expanduser()
+            p = kaos_path_from_user_input(params.path)
             if err := await self._validate_path(p):
                 return err
             p = p.canonical()
@@ -144,8 +145,8 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="No replacements made",
                 )
 
-            diff_blocks: list[DisplayBlock] = list(
-                build_diff_blocks(str(p), original_content, content)
+            diff_blocks: list[DisplayBlock] = await build_diff_blocks(
+                str(p), original_content, content
             )
 
             action = (
@@ -187,6 +188,7 @@ class StrReplaceFile(CallableTool2[Params]):
             )
 
         except Exception as e:
+            logger.warning("StrReplaceFile failed: {path}: {error}", path=params.path, error=e)
             return ToolError(
                 message=f"Failed to edit. Error: {e}",
                 brief="Failed to edit file",

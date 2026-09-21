@@ -34,7 +34,12 @@ kimi plugin install /path/to/my-plugin
 **Install from a ZIP file**
 
 ```sh
+# Local ZIP file
 kimi plugin install my-plugin.zip
+
+# Remote ZIP URL (including GitHub/GitLab archive download links)
+kimi plugin install https://example.com/my-plugin.zip
+kimi plugin install https://github.com/user/repo/archive/refs/heads/main.zip
 ```
 
 **Install from a Git repository**

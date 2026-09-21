@@ -4,16 +4,17 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from textwrap import shorten
 from typing import TYPE_CHECKING, cast
 
 import aiofiles
 from kaos.path import KaosPath
 from kosong.message import Message
 
+from kimi_cli.notifications.llm import is_notification_message
 from kimi_cli.soul.message import is_system_reminder_message, system
 from kimi_cli.utils.message import message_stringify
 from kimi_cli.utils.path import sanitize_cli_path
+from kimi_cli.utils.string import shorten
 from kimi_cli.wire.types import (
     AudioURLPart,
     ContentPart,
@@ -45,7 +46,11 @@ def _is_checkpoint_message(msg: Message) -> bool:
 
 def _is_internal_user_message(msg: Message) -> bool:
     """Check if a user message is internal bookkeeping rather than real user input."""
-    return _is_checkpoint_message(msg) or is_system_reminder_message(msg)
+    return (
+        _is_checkpoint_message(msg)
+        or is_system_reminder_message(msg)
+        or is_notification_message(msg)
+    )
 
 
 def _extract_tool_call_hint(args_json: str) -> str:
@@ -66,12 +71,12 @@ def _extract_tool_call_hint(args_json: str) -> str:
     for key in _HINT_KEYS:
         val = args.get(key)
         if isinstance(val, str) and val.strip():
-            return shorten(val, width=60, placeholder="…")
+            return shorten(val, width=60)
 
     # Fallback: first short string value
     for val in args.values():
         if isinstance(val, str) and 0 < len(val) <= 80:
-            return shorten(val, width=60, placeholder="…")
+            return shorten(val, width=60)
 
     return ""
 
@@ -231,7 +236,7 @@ def _build_overview(
     topic = ""
     for msg in history:
         if msg.role == "user" and not _is_internal_user_message(msg):
-            topic = shorten(message_stringify(msg), width=80, placeholder="…")
+            topic = shorten(message_stringify(msg), width=80)
             break
 
     # Count tool calls across all messages

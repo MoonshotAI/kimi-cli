@@ -109,6 +109,7 @@ async def step(
     *,
     on_message_part: Callback[[StreamedMessagePart], None] | None = None,
     on_tool_result: Callable[[ToolResult], None] | None = None,
+    on_trace_id: Callback[[str | None], None] | None = None,
 ) -> "StepResult":
     """
     Run one agent "step". In one step, the function generates LLM response based on the given
@@ -162,6 +163,7 @@ async def step(
             history,
             on_message_part=on_message_part,
             on_tool_call=on_tool_call,
+            on_trace_id=on_trace_id,
         )
     except (ChatProviderError, asyncio.CancelledError):
         # cancel all the futures to avoid hanging tasks
@@ -177,6 +179,7 @@ async def step(
         result.usage,
         tool_calls,
         tool_result_futures,
+        trace_id=result.trace_id,
     )
 
 
@@ -196,6 +199,9 @@ class StepResult:
 
     _tool_result_futures: dict[str, ToolResultFuture]
     """@private The futures of the results of the spawned tool calls."""
+
+    trace_id: str | None = None
+    """The ``x-trace-id`` response header of the request, if the provider exposes it."""
 
     async def tool_results(self) -> list[ToolResult]:
         """All the tool results returned by corresponding tool calls."""

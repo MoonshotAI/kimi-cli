@@ -234,10 +234,15 @@ function AgentCard({
           />
         </div>
 
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
           <span className={`text-[9px] font-mono rounded border px-1 py-0 ${getTypeColor(agent.subagent_type)}`}>
             {agent.subagent_type}
           </span>
+          {typeof agent.launch_spec?.effective_model === "string" && agent.launch_spec.effective_model && (
+            <span className="text-[9px] font-mono rounded border px-1 py-0 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+              {agent.launch_spec.effective_model}
+            </span>
+          )}
           <span className="text-[9px] font-mono text-muted-foreground">
             {agent.agent_id.slice(0, 8)}
           </span>

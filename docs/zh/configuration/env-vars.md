@@ -17,7 +17,9 @@ Kimi Code CLI 支持通过环境变量覆盖配置或控制运行行为。本页
 | `KIMI_MODEL_CAPABILITIES` | 模型能力，逗号分隔（如 `thinking,image_in`） |
 | `KIMI_MODEL_TEMPERATURE` | 生成参数 `temperature` |
 | `KIMI_MODEL_TOP_P` | 生成参数 `top_p` |
-| `KIMI_MODEL_MAX_TOKENS` | 生成参数 `max_tokens` |
+| `KIMI_MODEL_MAX_COMPLETION_TOKENS` | `max_completion_tokens` 的显式硬上限 |
+| `KIMI_MODEL_MAX_TOKENS` | `KIMI_MODEL_MAX_COMPLETION_TOKENS` 的兼容别名 |
+| `KIMI_MODEL_THINKING_KEEP` | Moonshot `thinking.keep` 开关（Preserved Thinking），仅在 Thinking 模式下生效 |
 
 ### `KIMI_BASE_URL`
 
@@ -75,13 +77,35 @@ export KIMI_MODEL_TEMPERATURE="0.7"
 export KIMI_MODEL_TOP_P="0.9"
 ```
 
-### `KIMI_MODEL_MAX_TOKENS`
+### `KIMI_MODEL_MAX_COMPLETION_TOKENS`
 
-设置生成参数 `max_tokens`，限制单次回复的最大 token 数。
+设置生成参数 `max_completion_tokens` 的显式硬上限。未设置时，Kimi Code CLI 使用模型的
+剩余上下文窗口；每次请求都会将实际值动态限制为
+`max_context_size - input_tokens`。
 
 ```sh
-export KIMI_MODEL_MAX_TOKENS="4096"
+export KIMI_MODEL_MAX_COMPLETION_TOKENS="4096"
 ```
+
+`KIMI_MODEL_MAX_TOKENS` 仍可使用；如果两个环境变量都设置，优先使用
+`KIMI_MODEL_MAX_COMPLETION_TOKENS`。将任一变量设为 `0` 或负整数可禁用 completion token
+限制。
+
+### `KIMI_MODEL_THINKING_KEEP`
+
+将 env 值原样作为 `thinking.keep` 字段发送给 Moonshot API，用于开启 Preserved Thinking（参考 [Moonshot 官方文档](https://platform.kimi.com/docs/guide/use-kimi-k2-thinking-model#preserved-thinking)）。设为 `all` 可让模型在多轮之间保留历史 reasoning_content。值不做任何校验、不做大小写归一化，透传给 API 自己判断。
+
+```sh
+export KIMI_MODEL_THINKING_KEEP="all"
+```
+
+未设置或设为空字符串时，请求体不携带此字段（等同当前默认行为）。该覆盖仅在当前模型真正处于 Thinking 模式时生效；对非 Thinking 模式的调用会被忽略，以避免发出只有 `thinking.keep` 而缺少 `thinking.type` 的无效请求体。
+
+此参数仅在支持 Preserved Thinking 的 Moonshot 模型（例如 `kimi-k2.6` / `kimi-k2-thinking`）上生效。传给其它模型时，Moonshot API 会忽略或拒绝该字段，CLI 本身不做校验。
+
+::: warning 注意成本
+`thinking.keep=all` 会让 API 在多轮之间保留历史 reasoning_content，input tokens 与 API 费用都会显著增加。请在确实需要 Preserved Thinking 时再开启。
+:::
 
 ## OpenAI 兼容环境变量
 
@@ -113,7 +137,9 @@ export OPENAI_API_KEY="sk-xxx"
 | 环境变量 | 说明 |
 | --- | --- |
 | `KIMI_SHARE_DIR` | 自定义共享目录路径（默认 `~/.kimi`） |
-| `KIMI_CLI_NO_AUTO_UPDATE` | 禁用自动更新检查 |
+| `KIMI_CLI_NO_AUTO_UPDATE` | 禁用所有更新相关功能 |
+| `KIMI_CLI_PASTE_CHAR_THRESHOLD` | 粘贴文本折叠的字符数阈值（默认 `1000`） |
+| `KIMI_CLI_PASTE_LINE_THRESHOLD` | 粘贴文本折叠的行数阈值（默认 `15`） |
 
 ### `KIMI_SHARE_DIR`
 
@@ -131,7 +157,7 @@ export KIMI_SHARE_DIR="/path/to/custom/kimi"
 
 ### `KIMI_CLI_NO_AUTO_UPDATE`
 
-设置为 `1`、`true`、`t`、`yes` 或 `y`（不区分大小写）时，禁用 Shell 模式下的后台自动更新检查。
+设置为 `1`、`true`、`t`、`yes` 或 `y`（不区分大小写）时，禁用所有更新相关功能，包括后台自动更新检查、启动时的阻断式更新提醒和欢迎面板中的版本提示。
 
 ```sh
 export KIMI_CLI_NO_AUTO_UPDATE="1"
@@ -141,3 +167,32 @@ export KIMI_CLI_NO_AUTO_UPDATE="1"
 如果你通过 Nix 或其他包管理器安装 Kimi Code CLI，通常会自动设置此环境变量，因为更新由包管理器处理。
 :::
 
+### `KIMI_CLI_PASTE_CHAR_THRESHOLD`
+
+在 Agent 模式下，当粘贴文本的字符数达到此阈值时，文本会被折叠为占位符（如 `[Pasted text #1 +10 lines]`）显示，提交时自动展开为完整内容。默认值为 `1000`。
+
+```sh
+export KIMI_CLI_PASTE_CHAR_THRESHOLD="1000"
+```
+
+### `KIMI_CLI_PASTE_LINE_THRESHOLD`
+
+在 Agent 模式下，当粘贴文本的行数达到此阈值时，文本会被折叠为占位符显示。默认值为 `15`。
+
+```sh
+export KIMI_CLI_PASTE_LINE_THRESHOLD="15"
+```
+
+::: tip 提示
+部分终端（如通过 SSH 连接的 XShell）在粘贴多行文本后，可能出现中文/日文/韩文等 CJK 输入法无法正常工作的问题，表现为 IME 候选窗口不弹出或输入无响应，需要按 Ctrl+C 后才能恢复。
+
+这是因为多行文本在输入缓冲区中会导致终端光标定位信息错乱，影响 IME 的组合窗口定位。你可以通过降低行数阈值来规避此问题——将包含换行的粘贴内容折叠为单行占位符：
+
+```sh
+export KIMI_CLI_PASTE_LINE_THRESHOLD="2"
+```
+
+设置后，任何包含换行的粘贴内容都会被自动折叠，避免多行文本进入输入缓冲区。单行粘贴（如 URL、短命令）不受影响。
+
+注意：两个阈值的判断逻辑是"满足任一即折叠"（字符数 **或** 行数），因此只需调低行数阈值即可。不建议将字符数阈值设为很小的值（如 `1`），否则所有非空粘贴（包括单行短文本）都会被折叠。
+:::

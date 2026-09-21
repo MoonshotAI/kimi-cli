@@ -251,7 +251,7 @@ export function SessionFilesPanel({
             </div>
           ) : null}
 
-          {!isLoading && !error && entries.length === 0 ? (
+          {!(isLoading || error) && entries.length === 0 ? (
             <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed text-sm text-muted-foreground">
               <FolderIcon className="size-5" />
               <span>No files in this directory.</span>

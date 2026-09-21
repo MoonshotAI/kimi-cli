@@ -14,6 +14,7 @@ from typing import Literal, Protocol
 from PIL import Image
 
 from kimi_cli.share import get_share_dir
+from kimi_cli.utils.envvar import get_env_int
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.media_tags import wrap_media_part
 from kimi_cli.utils.string import random_string
@@ -30,8 +31,8 @@ _PASTED_TEXT_PLACEHOLDER_RE = re.compile(
     r"\[Pasted text #(?P<id>\d+)(?: \+(?P<lines>\d+) lines?)?\]"
 )
 
-_TEXT_PASTE_CHAR_THRESHOLD = 1000
-_TEXT_PASTE_LINE_THRESHOLD = 15
+_TEXT_PASTE_CHAR_THRESHOLD = get_env_int("KIMI_CLI_PASTE_CHAR_THRESHOLD", 1000)
+_TEXT_PASTE_LINE_THRESHOLD = get_env_int("KIMI_CLI_PASTE_LINE_THRESHOLD", 15)
 
 
 def sanitize_surrogates(text: str) -> str:

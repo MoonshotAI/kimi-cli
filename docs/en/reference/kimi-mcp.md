@@ -29,6 +29,7 @@ kimi mcp add [OPTIONS] NAME [TARGET_OR_COMMAND...]
 | `--env KEY=VALUE` | `-e` | Environment variable (`stdio` only), can be specified multiple times |
 | `--header KEY:VALUE` | `-H` | HTTP header (`http` only), can be specified multiple times |
 | `--auth TYPE` | `-a` | Authentication type (e.g., `oauth`, `http` only) |
+| `--scope SCOPE` | `-s` | OAuth scope (`oauth` only), can be specified multiple times |
 
 ## `list`
 
@@ -42,6 +43,7 @@ Output includes:
 - Configuration file path
 - Name, transport type, and target for each server
 - Authorization status for OAuth servers
+- Configured OAuth scopes
 
 ## `remove`
 
@@ -65,7 +67,7 @@ Authorize an MCP server that uses OAuth.
 kimi mcp auth NAME
 ```
 
-This will open a browser for the OAuth authorization flow. After successful authorization, the token is cached for future use.
+This will open a browser for the OAuth authorization flow. After successful authorization, the token is cached in `~/.kimi/mcp-oauth/` for future use.
 
 **Arguments**
 
@@ -92,6 +94,8 @@ kimi mcp reset-auth NAME
 | `NAME` | Name of server to reset authorization |
 
 After clearing, you need to run `kimi mcp auth` again to re-authorize.
+
+After upgrading from older versions that used FastMCP 2.x, existing OAuth MCP tokens are not migrated automatically; if `kimi mcp list` shows that authorization is required, run `kimi mcp auth NAME` again.
 
 ## `test`
 

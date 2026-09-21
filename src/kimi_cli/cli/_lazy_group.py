@@ -30,6 +30,22 @@ class LazySubcommandGroup(typer.core.TyperGroup):
         "web",
     )
 
+    # Click options that support optional values.  When the flag is present
+    # without a following argument the parser returns the mapped *flag_value*
+    # instead of raising "requires an argument".
+    _optional_value_options: dict[str, str] = {
+        "session_id": "",  # --session / --resume without value → picker mode
+    }
+
+    def make_context(
+        self, info_name: str | None, args: list[str], parent: click.Context | None = None, **extra
+    ) -> click.Context:
+        for param in self.params:
+            if isinstance(param, click.Option) and param.name in self._optional_value_options:
+                param._flag_needs_value = True
+                param.flag_value = self._optional_value_options[param.name]
+        return super().make_context(info_name, args, parent=parent, **extra)
+
     def list_commands(self, ctx: click.Context) -> list[str]:
         commands = list(super().list_commands(ctx))
         for name in self.lazy_command_order:
