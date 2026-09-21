@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.51.0 (2026-09-21)
+
 **Highlights**: Kimi CLI is archived and no longer maintained, and this is the final release. Please migrate to [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code); see the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration)
 
 - Build: Mark `kimi-cli` and all packages in this repository as archived — no further releases, bug fixes, or security updates are planned

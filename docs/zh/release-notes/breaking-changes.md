@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.51.0
+
 ### PyPI 上的 `kimi-code` 包不再安装 Kimi CLI
 
 PyPI 上的 `kimi-code` 包原本是 Kimi CLI 的别名，现在改为一个占位包：运行时只打印新版 Kimi Code CLI 的安装说明，并以状态码 1 退出。Kimi CLI 本身已归档，不再维护。

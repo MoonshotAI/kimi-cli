@@ -1,6 +1,6 @@
 [project]
 name = "kimi-cli"
-version = "1.50.0"
+version = "1.51.0"
 description = "[Archived] Legacy Python Kimi CLI, no longer maintained. Use Kimi Code CLI instead: https://github.com/MoonshotAI/kimi-code"
 readme = "README.md"
 requires-python = ">=3.12"
