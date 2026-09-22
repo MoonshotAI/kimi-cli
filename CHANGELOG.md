@@ -27,6 +27,7 @@ Only write entries that are worth mentioning to users.
 ## 1.50.0 (2026-09-02)
 
 - Kosong: Stop sending an empty `anthropic-beta` header when no beta features are declared — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject
+- Tools: `StrReplaceFile` now refuses to edit a file that is not valid UTF-8 instead of silently corrupting it — the whole-file round trip replaced every undecodable byte with U+FFFD, anywhere in the file, including bytes far from the edit and invisible in the approval diff
 
 ## 1.49.0 (2026-07-16)
 

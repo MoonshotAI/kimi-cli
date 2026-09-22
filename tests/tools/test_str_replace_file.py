@@ -246,3 +246,59 @@ async def test_replace_empty_strings(
     assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Hello !"
+
+
+async def test_replace_refuses_file_with_undecodable_bytes(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """A file that is not valid UTF-8 is left byte-for-byte alone."""
+    file_path = temp_work_dir / "invalid.txt"
+    # The undecodable byte is nowhere near the edit, on a line the edit never mentions.
+    original_bytes = b"alpha\nbeta \xff gamma\ndelta\n"
+    await file_path.write_bytes(original_bytes)
+
+    result = await str_replace_file_tool(
+        Params(path=str(file_path), edit=Edit(old="alpha", new="ALPHA"))
+    )
+
+    assert result.is_error
+    assert "not valid UTF-8" in result.message
+    # Without the guard the file is rewritten with \xff replaced by \xef\xbf\xbd,
+    # growing by two bytes on an edit that only asked to touch "alpha".
+    assert await file_path.read_bytes() == original_bytes
+
+
+async def test_replace_allows_file_containing_real_replacement_character(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """U+FFFD stored in the file is legitimate content, not a failed decode."""
+    file_path = temp_work_dir / "fffd.txt"
+    original_content = "alpha\nbeta \ufffd gamma\ndelta\n"
+    await file_path.write_text(original_content)
+
+    result = await str_replace_file_tool(
+        Params(path=str(file_path), edit=Edit(old="alpha", new="ALPHA"))
+    )
+
+    assert not result.is_error
+    assert await file_path.read_text() == "ALPHA\nbeta \ufffd gamma\ndelta\n"
+
+
+async def test_replace_allows_crlf_file(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """CRLF files must not be mistaken for undecodable ones.
+
+    Reads translate CRLF to LF, so any detection that compares the decoded text
+    against the raw bytes would reject every Windows-line-ending file. (That the
+    write then normalizes the endings to LF is a separate bug, #2191.)
+    """
+    file_path = temp_work_dir / "crlf.txt"
+    await file_path.write_bytes(b"alpha\r\nbeta\r\n")
+
+    result = await str_replace_file_tool(
+        Params(path=str(file_path), edit=Edit(old="alpha", new="ALPHA"))
+    )
+
+    assert not result.is_error
+    assert b"ALPHA" in await file_path.read_bytes()

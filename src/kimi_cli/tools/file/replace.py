@@ -131,6 +131,30 @@ class StrReplaceFile(CallableTool2[Params]):
             # Read the file content
             content = await p.read_text(errors="replace")
 
+            # This tool reads the whole file, edits the string, and writes the whole
+            # string back, so every undecodable byte in the file — including bytes
+            # nowhere near the edit — would come back as U+FFFD and be written out as
+            # EF BF BD. Refuse rather than silently rewrite bytes the edit never asked
+            # to touch. A U+FFFD present in the decoded text is only a symptom: it may
+            # equally be a real U+FFFD stored in the file, so confirm against the raw
+            # bytes before rejecting. The strict decode below is deliberate and is
+            # caught, not propagated, so it cannot panic on malformed UTF-8.
+            if "\ufffd" in content:
+                raw_bytes = await p.read_bytes()
+                try:
+                    raw_bytes.decode("utf-8")
+                except UnicodeDecodeError as decode_error:
+                    return ToolError(
+                        message=(
+                            f"`{params.path}` is not valid UTF-8 "
+                            f"(byte 0x{raw_bytes[decode_error.start]:02x} at offset "
+                            f"{decode_error.start}). Editing it with StrReplaceFile would "
+                            "replace that byte, and every other undecodable byte in the file, "
+                            "with U+FFFD. No changes were made."
+                        ),
+                        brief="File is not valid UTF-8",
+                    )
+
             original_content = content
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
