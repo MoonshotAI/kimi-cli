@@ -826,6 +826,47 @@ def test_mark_task_running_and_completed_clear_approval_reason(runtime):
     assert completed.runtime.failure_reason is None
 
 
+def test_mark_task_running_sets_started_at_once(runtime):
+    manager = runtime.background_tasks
+    store = manager.store
+    spec = TaskSpec(
+        id="a4444444",
+        kind="agent",
+        session_id=runtime.session.id,
+        description="started_at task",
+        tool_call_id="tool-started-at",
+        owner_role="root",
+        kind_payload={"agent_id": "aagent", "subagent_type": "coder"},
+    )
+    store.create_task(spec)
+
+    # Freshly created agent tasks have no start time yet.
+    assert store.read_runtime(spec.id).started_at is None
+
+    # The first "running" transition records the start time.
+    manager._mark_task_running(spec.id)
+    first_started_at = store.read_runtime(spec.id).started_at
+    assert first_started_at is not None
+
+    # A later re-mark (e.g. after an approval is resolved) must not reset it,
+    # otherwise the completion duration would only span the last approval gap.
+    store.write_runtime(
+        spec.id,
+        store.read_runtime(spec.id).model_copy(
+            update={"status": "awaiting_approval", "failure_reason": "Need approval"}
+        ),
+    )
+    manager._mark_task_running(spec.id)
+    assert store.read_runtime(spec.id).started_at == first_started_at
+
+    # With started_at set, completion can compute a duration (finished - started).
+    manager._mark_task_completed(spec.id)
+    done = store.read_runtime(spec.id)
+    assert done.started_at == first_started_at
+    assert done.finished_at is not None
+    assert done.finished_at >= done.started_at
+
+
 def test_publish_terminal_notifications_creates_notification(runtime):
     manager = runtime.background_tasks
     store = manager.store

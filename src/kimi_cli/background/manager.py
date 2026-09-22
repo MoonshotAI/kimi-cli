@@ -616,6 +616,13 @@ class BackgroundTaskManager:
             return
         runtime.status = "running"
         runtime.updated_at = time.time()
+        # Record the first transition into "running" as the task's start time so
+        # that completion duration can be computed. Agent tasks reach the
+        # "running" state here (bash tasks set started_at in the worker); guard
+        # against overwriting it because this method is also called again after
+        # each approval is resolved, which would otherwise reset the duration.
+        if runtime.started_at is None:
+            runtime.started_at = runtime.updated_at
         runtime.heartbeat_at = runtime.updated_at
         runtime.failure_reason = None
         self._store.write_runtime(task_id, runtime)
