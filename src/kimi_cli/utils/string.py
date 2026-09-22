@@ -32,7 +32,11 @@ def shorten_middle(text: str, width: int, remove_newline: bool = True) -> str:
         return text
     if remove_newline:
         text = _NEWLINE_RE.sub(" ", text)
-    return text[: width // 2] + "..." + text[-width // 2 :]
+    # Account for the 3-character "..." ellipsis.
+    available = max(0, width - 3)
+    left = available // 2
+    right = available - left
+    return text[:left] + "..." + text[-right:] if right > 0 else text[:width]
 
 
 def random_string(length: int = 8) -> str:
