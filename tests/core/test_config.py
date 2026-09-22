@@ -74,6 +74,28 @@ def test_load_config_text_json():
     assert config == get_default_config()
 
 
+@pytest.mark.parametrize(
+    ("setting", "expected"),
+    [
+        ("", True),
+        ("prompt_cache_key = true", True),
+        ("prompt_cache_key = false", False),
+    ],
+)
+def test_load_config_kimi_prompt_cache_key(setting: str, expected: bool):
+    config = load_config_from_string(
+        f"""
+[providers.third-party]
+type = "kimi"
+base_url = "https://api.example.com/v1"
+api_key = "test-key"
+{setting}
+"""
+    )
+
+    assert config.providers["third-party"].prompt_cache_key is expected
+
+
 def test_load_config_sets_source_file(tmp_path):
     config_file = tmp_path / "custom.toml"
 

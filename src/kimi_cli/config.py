@@ -49,6 +49,9 @@ class LLMProvider(BaseModel):
     """Message field name carrying reasoning content for OpenAI-compatible APIs.
     Applies to provider type ``openai_legacy``. Defaults to ``reasoning_content``
     when unset. Use an empty string to disable reasoning round-tripping."""
+    prompt_cache_key: bool = True
+    """Whether ``kimi`` providers send the session ID as ``prompt_cache_key``.
+    Disable for third-party compatible APIs that reject this Kimi-specific parameter."""
     oauth: OAuthRef | None = None
     """OAuth credential reference (do not store tokens here)."""
 

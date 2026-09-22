@@ -358,7 +358,7 @@ def create_llm(
             )
 
             gen_kwargs: Kimi.GenerationKwargs = {}
-            if session_id:
+            if session_id and provider.prompt_cache_key:
                 gen_kwargs["prompt_cache_key"] = session_id
             if temperature := os.getenv("KIMI_MODEL_TEMPERATURE"):
                 gen_kwargs["temperature"] = float(temperature)

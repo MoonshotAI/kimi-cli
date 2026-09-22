@@ -100,6 +100,7 @@ tool_call_timeout_ms = 60000
 | `api_key` | `string` | 是 | API 密钥 |
 | `env` | `table` | 否 | 创建供应商实例前设置的环境变量 |
 | `custom_headers` | `table` | 否 | 请求时附加的自定义 HTTP 头 |
+| `prompt_cache_key` | `boolean` | 否 | `kimi` 供应商是否将会话 ID 作为 `prompt_cache_key` 发送（默认：`true`）。兼容 API 不支持此参数时设为 `false` |
 
 示例：
 
@@ -109,6 +110,8 @@ type = "kimi"
 base_url = "https://api.moonshot.cn/v1"
 api_key = "sk-xxx"
 custom_headers = { "X-Custom-Header" = "value" }
+# 对于不支持 prompt_cache_key 的第三方 Kimi 兼容 API：
+# prompt_cache_key = false
 ```
 
 ### `models`
