@@ -452,10 +452,12 @@ def delete_tokens(ref: OAuthRef) -> None:
 
 
 async def request_device_authorization() -> DeviceAuthorization:
+    oauth_host = _oauth_host().rstrip("/")
+    logger.info("Requesting device authorization from {host}", host=oauth_host)
     async with (
         new_client_session() as session,
         session.post(
-            f"{_oauth_host().rstrip('/')}/api/oauth/device_authorization",
+            f"{oauth_host}/api/oauth/device_authorization",
             data={"client_id": KIMI_CODE_CLIENT_ID},
             headers=_common_headers(),
         ) as response,
@@ -463,7 +465,13 @@ async def request_device_authorization() -> DeviceAuthorization:
         data = await response.json(content_type=None)
         status = response.status
     if status != 200:
+        logger.error("Device authorization failed (HTTP {status}): {data}", status=status, data=data)
         raise OAuthError(f"Device authorization failed: {data}")
+    logger.info(
+        "Device authorization obtained: user_code={user_code}, interval={interval}s",
+        user_code=data.get("user_code"),
+        interval=data.get("interval", 5),
+    )
     return DeviceAuthorization(
         user_code=str(data["user_code"]),
         device_code=str(data["device_code"]),
@@ -475,6 +483,7 @@ async def request_device_authorization() -> DeviceAuthorization:
 
 
 async def _request_device_token(auth: DeviceAuthorization) -> tuple[int, dict[str, Any]]:
+    logger.debug("Polling for device token (user_code={user_code})", user_code=auth.user_code)
     try:
         async with (
             new_client_session() as session,
@@ -491,6 +500,7 @@ async def _request_device_token(auth: DeviceAuthorization) -> tuple[int, dict[st
             data_any: Any = await response.json(content_type=None)
             status = response.status
     except aiohttp.ClientError as exc:
+        logger.warning("Token polling request failed: {error}", error=exc)
         raise OAuthError("Token polling request failed.") from exc
     if not isinstance(data_any, dict):
         raise OAuthError("Unexpected token polling response.")
@@ -501,6 +511,7 @@ async def _request_device_token(auth: DeviceAuthorization) -> tuple[int, dict[st
 
 
 async def refresh_token(refresh_token: str, *, max_retries: int = 3) -> OAuthToken:
+    logger.debug("Refreshing OAuth access token")
     last_exc: Exception | None = None
     for attempt in range(max_retries):
         try:
@@ -531,7 +542,9 @@ async def refresh_token(refresh_token: str, *, max_retries: int = 3) -> OAuthTok
                 if status in _RETRYABLE_REFRESH_STATUSES:
                     raise _RetryableRefreshError(desc)
                 raise OAuthError(desc)
-            return OAuthToken.from_response(data)
+            token = OAuthToken.from_response(data)
+            logger.info("Token refreshed successfully (expires_in={expires_in}s)", expires_in=token.expires_in)
+            return token
         except OAuthUnauthorized:
             raise
         except (aiohttp.ClientError, TimeoutError, OSError, _RetryableRefreshError) as exc:
@@ -622,15 +635,21 @@ async def login_kimi_code(
         yield OAuthEvent("error", "Kimi Code platform is unavailable.")
         return
 
+    logger.info("Starting Kimi Code device OAuth login flow")
     auth: DeviceAuthorization
     token: OAuthToken | None = None
     while True:
         try:
             auth = await request_device_authorization()
         except Exception as exc:
+            logger.error("Device authorization request failed: {error}", error=exc)
             yield OAuthEvent("error", f"Login failed: {exc}")
             return
 
+        logger.info(
+            "Device code obtained, waiting for user to authorize at {url}",
+            url=auth.verification_uri_complete,
+        )
         yield OAuthEvent(
             "info",
             "Please visit the following URL to finish authorization.",
@@ -656,6 +675,7 @@ async def login_kimi_code(
                 status, data = await _request_device_token(auth)
                 if status == 200 and "access_token" in data:
                     token = OAuthToken.from_response(data)
+                    logger.info("Device token obtained successfully (scope={scope})", scope=token.scope)
                     break
                 error_code = str(data.get("error") or "unknown_error")
                 if error_code == "expired_token":
@@ -682,9 +702,11 @@ async def login_kimi_code(
 
     assert token is not None
 
-    oauth_ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
-    oauth_ref = save_tokens(oauth_ref, token)
-
+    # Validate everything we can in memory BEFORE persisting credentials.
+    # If we wrote the token to disk first and then list_models / save_config
+    # failed, the next launch would see valid credentials but no default_model
+    # (banner stuck on "Model: not set") with no way to recover except a
+    # blind /login retry.
     try:
         models = await list_models(platform, token.access_token)
     except Exception as exc:
@@ -692,23 +714,50 @@ async def login_kimi_code(
         yield OAuthEvent("error", f"Failed to get models: {exc}")
         return
 
+    logger.info("Fetched {count} models for platform", count=len(models))
+
     if not models:
         yield OAuthEvent("error", "No models available for the selected platform.")
         return
 
     selection = _select_default_model_and_thinking(models)
     if selection is None:
+        yield OAuthEvent("error", "Failed to select a default model from the returned list.")
         return
     selected_model, thinking = selection
 
-    _apply_kimi_code_config(
-        config,
-        models=models,
-        selected_model=selected_model,
+    # All validation passed — now persist credentials + config.
+    oauth_ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
+    try:
+        oauth_ref = save_tokens(oauth_ref, token)
+    except OSError as exc:
+        logger.error("Failed to save credentials: {error}", error=exc)
+        yield OAuthEvent("error", f"Failed to save credentials: {exc}")
+        return
+
+    try:
+        _apply_kimi_code_config(
+            config,
+            models=models,
+            selected_model=selected_model,
+            thinking=thinking,
+            oauth_ref=oauth_ref,
+        )
+        save_config(config)
+    except Exception as exc:
+        # Roll back the credentials write so we don't leave the user in the
+        # zombie state (token on disk, default_model missing).
+        logger.error("Failed to save config; rolling back credentials: {error}", error=exc)
+        with suppress(Exception):
+            delete_tokens(oauth_ref)
+        yield OAuthEvent("error", f"Failed to save config: {exc}")
+        return
+
+    logger.info(
+        "Login successful: default_model={model}, thinking={thinking}",
+        model=config.default_model,
         thinking=thinking,
-        oauth_ref=oauth_ref,
     )
-    save_config(config)
     yield OAuthEvent("success", "Logged in successfully.")
     return
 
