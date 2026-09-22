@@ -922,3 +922,97 @@ class TestPlanOptionValidator:
         )
         assert params.options is not None
         assert len(params.options) == 3
+
+
+# ---------------------------------------------------------------------------
+# Shared-agent plan-mode binding (regression for #2478)
+# ---------------------------------------------------------------------------
+
+
+def _make_agent_with_exit_plan_mode(runtime: Runtime) -> Agent:
+    """Build an agent whose toolset contains a live ExitPlanMode instance."""
+    toolset = KimiToolset()
+    toolset.add(ExitPlanMode())
+    return Agent(
+        name="Test Agent",
+        system_prompt="Test system prompt.",
+        toolset=toolset,
+        runtime=runtime,
+    )
+
+
+class TestSharedAgentPlanModeBinding:
+    """Regression tests for #2478.
+
+    Plan-mode tools live on the shared agent toolset, but their bound callbacks
+    capture a specific soul. Constructing a second ``KimiSoul`` over the same
+    agent (as ``/init`` does with a throwaway soul) rebinds those shared
+    instances to the second soul, so the original soul's ``ExitPlanMode`` would
+    report "Not in plan mode" even while its plan-mode reminder is active.
+    """
+
+    async def test_second_soul_clobbers_binding_and_rebind_restores(
+        self,
+        runtime: Runtime,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+
+        agent = _make_agent_with_exit_plan_mode(runtime)
+        # First soul binds ExitPlanMode to itself; it is not (yet) in plan mode,
+        # so the persisted session state stays False.
+        soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "a.jsonl"))
+
+        # A second soul sharing the agent (as `/init` does) rebinds the shared
+        # ExitPlanMode instance to itself while its own plan_mode is still False.
+        throwaway = KimiSoul(agent, context=Context(file_backend=tmp_path / "b.jsonl"))
+
+        # Only the live soul enters plan mode.
+        await soul.set_plan_mode_from_manual(True)
+        assert soul.plan_mode is True
+
+        exit_tool = agent.toolset.find("ExitPlanMode")
+        assert isinstance(exit_tool, ExitPlanMode)
+        assert exit_tool._plan_mode_checker is not None
+
+        # Bug: the shared tool still points at the throwaway soul (plan_mode
+        # False), so it disagrees with the live soul.
+        assert throwaway.plan_mode is False
+        assert exit_tool._plan_mode_checker() is False
+
+        # Re-binding restores the live soul's binding.
+        soul.rebind_plan_mode_tools()
+        assert exit_tool._plan_mode_checker() is True
+
+    async def test_init_slash_command_preserves_plan_mode_binding(
+        self,
+        runtime: Runtime,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from kimi_cli.soul.slash import init as init_command
+
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+
+        agent = _make_agent_with_exit_plan_mode(runtime)
+        soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
+
+        exit_tool = agent.toolset.find("ExitPlanMode")
+        assert isinstance(exit_tool, ExitPlanMode)
+
+        # Stub out the heavy INIT run and AGENTS.md reload so `/init` runs fast.
+        monkeypatch.setattr(KimiSoul, "run", AsyncMock())
+        monkeypatch.setattr(
+            "kimi_cli.soul.slash.load_agents_md",
+            AsyncMock(return_value="Generated AGENTS.md"),
+        )
+
+        await init_command(soul, "")
+
+        # After `/init`, entering plan mode on the live soul must be visible to
+        # the shared ExitPlanMode tool. Without the rebind, the tool would still
+        # be bound to the discarded `/init` soul and report False.
+        await soul.set_plan_mode_from_manual(True)
+        assert exit_tool._plan_mode_checker is not None
+        assert exit_tool._plan_mode_checker() is True
