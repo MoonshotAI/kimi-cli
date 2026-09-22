@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast, get_args
+from urllib.parse import urlparse
 
 from kosong.chat_provider import ChatProvider, StreamedMessage, ThinkingEffort
 from kosong.message import (
@@ -47,6 +48,7 @@ ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__va
 DEFAULT_UNKNOWN_CONTEXT_COMPLETION_TOKENS = 32_000
 DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN = 1_024
 MEDIA_TOKEN_ESTIMATE = 2_000
+MOONSHOT_API_HOSTS = {"api.kimi.com", "api.moonshot.ai", "api.moonshot.cn"}
 
 
 @dataclass(slots=True)
@@ -323,6 +325,16 @@ def _kimi_default_headers(provider: LLMProvider, oauth: OAuthManager | None) -> 
     return headers
 
 
+def _supports_prompt_cache_key(base_url: str) -> bool:
+    url = base_url.strip()
+    if "//" not in url:
+        # urlparse() only fills in `hostname` when a netloc is present, so a
+        # scheme-less base_url such as "api.moonshot.ai/v1" parses entirely as
+        # a path. Give it a netloc before parsing.
+        url = f"//{url}"
+    return urlparse(url).hostname in MOONSHOT_API_HOSTS
+
+
 def create_llm(
     provider: LLMProvider,
     model: LLMModel,
@@ -358,7 +370,7 @@ def create_llm(
             )
 
             gen_kwargs: Kimi.GenerationKwargs = {}
-            if session_id:
+            if session_id and _supports_prompt_cache_key(provider.base_url):
                 gen_kwargs["prompt_cache_key"] = session_id
             if temperature := os.getenv("KIMI_MODEL_TEMPERATURE"):
                 gen_kwargs["temperature"] = float(temperature)
