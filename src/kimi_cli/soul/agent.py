@@ -112,6 +112,10 @@ async def load_agents_md(work_dir: KaosPath) -> str | None:
         kimi_path = d / ".kimi" / "AGENTS.md"
         # AGENTS.md and agents.md are mutually exclusive (uppercase wins)
         root_candidates = [d / "AGENTS.md", d / "agents.md"]
+        # .claude/CLAUDE.md — Claude project-local config (for Claude Code compatibility, #2401)
+        claude_kimi_path = d / ".claude" / "CLAUDE.md"
+        # CLAUDE.md and claude.md are mutually exclusive (uppercase wins)
+        claude_candidates = [d / "CLAUDE.md", d / "claude.md"]
 
         candidates: list[KaosPath] = []
         if await kimi_path.is_file():
@@ -119,6 +123,12 @@ async def load_agents_md(work_dir: KaosPath) -> str | None:
         for rc in root_candidates:
             if await rc.is_file():
                 candidates.append(rc)
+                break
+        if await claude_kimi_path.is_file():
+            candidates.append(claude_kimi_path)
+        for cc in claude_candidates:
+            if await cc.is_file():
+                candidates.append(cc)
                 break
 
         for path in candidates:
