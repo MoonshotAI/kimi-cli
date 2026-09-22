@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast, get_args
+from urllib.parse import urlparse
 
 from kosong.chat_provider import ChatProvider, StreamedMessage, ThinkingEffort
 from kosong.message import (
@@ -323,6 +324,34 @@ def _kimi_default_headers(provider: LLMProvider, oauth: OAuthManager | None) -> 
     return headers
 
 
+_OPENCODE_SESSION_HEADER = "x-opencode-session"
+
+
+def _is_opencode_host(base_url: str) -> bool:
+    """True when *base_url* points at OpenCode's official API host."""
+    host = (urlparse(base_url).hostname or "").lower().rstrip(".")
+    return host == "opencode.ai" or host.endswith(".opencode.ai")
+
+
+def _openai_compatible_headers(
+    provider: LLMProvider,
+    *,
+    session_id: str | None,
+) -> dict[str, str] | None:
+    """Headers for an OpenAI-compatible provider.
+
+    OpenCode Go returns HTTP 400 unless every request in a conversation carries
+    the same ``x-opencode-session`` value (MoonshotAI/kimi-cli#2653). The Kimi
+    session id is stable for one conversation and changes when a new session
+    starts. An explicit custom header is left untouched.
+    """
+    headers = dict(provider.custom_headers) if provider.custom_headers else {}
+    already_set = any(name.lower() == _OPENCODE_SESSION_HEADER for name in headers)
+    if session_id and _is_opencode_host(provider.base_url) and not already_set:
+        headers[_OPENCODE_SESSION_HEADER] = session_id
+    return headers or None
+
+
 def create_llm(
     provider: LLMProvider,
     model: LLMModel,
@@ -392,21 +421,23 @@ def create_llm(
                 if provider.reasoning_key is not None
                 else "reasoning_content"
             )
+            openai_headers = _openai_compatible_headers(provider, session_id=session_id)
             chat_provider = OpenAILegacy(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
                 reasoning_key=reasoning_key,
-                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
+                **({"default_headers": openai_headers} if openai_headers else {}),
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
 
+            openai_headers = _openai_compatible_headers(provider, session_id=session_id)
             chat_provider = OpenAIResponses(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
-                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
+                **({"default_headers": openai_headers} if openai_headers else {}),
             )
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic

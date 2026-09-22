@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- LLM: Send a stable `x-opencode-session` header to OpenCode Go (`*.opencode.ai`) so Chat Completions requests are not rejected with HTTP 400. The value is the Kimi session id. An explicit custom header is left as-is.
+
 ## 1.52.0 (2026-09-22)
 
 **Highlights**: Kimi CLI is archived and no longer maintained, and this is the final release. Please migrate to [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code); see the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration)

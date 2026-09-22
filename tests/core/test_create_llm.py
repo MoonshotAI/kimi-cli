@@ -168,6 +168,93 @@ def test_create_llm_kimi_non_positive_completion_cap_disables_clamping(monkeypat
     assert llm.chat_provider.model_parameters["max_completion_tokens"] is None
 
 
+def test_create_llm_opencode_go_sets_stable_session_header():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://opencode.ai/zen/go/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(provider="opencode", model="gpt", max_context_size=8000)
+
+    llm = create_llm(provider, model, session_id="sess-2653")
+
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    headers = llm.chat_provider._client_kwargs["default_headers"]
+    assert headers["x-opencode-session"] == "sess-2653"
+
+
+def test_create_llm_opencode_subdomain_and_responses_wire():
+    provider = LLMProvider(
+        type="openai_responses",
+        base_url="https://go.opencode.ai/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(provider="opencode", model="gpt", max_context_size=8000)
+
+    llm = create_llm(provider, model, session_id="sess-go")
+
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAIResponses)
+    headers = llm.chat_provider._client_kwargs["default_headers"]
+    assert headers["x-opencode-session"] == "sess-go"
+
+
+def test_create_llm_opencode_keeps_explicit_session_header():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://opencode.ai/zen/go/v1",
+        api_key=SecretStr("test-key"),
+        custom_headers={"X-OpenCode-Session": "user-set", "X-Trace": "1"},
+    )
+    model = LLMModel(provider="opencode", model="gpt", max_context_size=8000)
+
+    llm = create_llm(provider, model, session_id="sess-2653")
+
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    headers = llm.chat_provider._client_kwargs["default_headers"]
+    assert headers == {"X-OpenCode-Session": "user-set", "X-Trace": "1"}
+
+
+def test_create_llm_non_opencode_host_omits_session_header():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://api.example.com/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(provider="example", model="gpt", max_context_size=8000)
+
+    llm = create_llm(provider, model, session_id="sess-2653")
+
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert "default_headers" not in llm.chat_provider._client_kwargs
+
+
+def test_create_llm_opencode_without_session_omits_header():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://opencode.ai/zen/go/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(provider="opencode", model="gpt", max_context_size=8000)
+
+    llm = create_llm(provider, model)
+
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert "default_headers" not in llm.chat_provider._client_kwargs
+
+
 def test_create_llm_echo_provider():
     provider = LLMProvider(type="_echo", base_url="", api_key=SecretStr(""))
     model = LLMModel(provider="_echo", model="echo", max_context_size=1234)
