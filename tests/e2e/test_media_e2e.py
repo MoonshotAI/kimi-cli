@@ -9,7 +9,7 @@ from kaos.path import KaosPath
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 def _print_trace(label: str, text: str) -> None:
@@ -128,7 +128,9 @@ def _run_print_mode(
     cmd = [
         "uv",
         "run",
-        "kimi",
+        "python",
+        "-m",
+        "kimi_cli.cli",
         "--print",
         "--yolo",
         "--input-format",
@@ -247,7 +249,9 @@ def test_scripted_echo_media_e2e(temp_work_dir: KaosPath, tmp_path: Path, mode: 
         cmd = [
             "uv",
             "run",
-            "kimi",
+            "python",
+            "-m",
+            "kimi_cli.cli",
             "--wire",
             "--yolo",
             "--config-file",

@@ -1,6 +1,6 @@
 [project]
 name = "kimi-code"
-version = "1.51.0"
+version = "1.52.0"
 description = "[Archived] Legacy PyPI package, NOT the new Kimi Code CLI. Install Kimi Code CLI from https://github.com/MoonshotAI/kimi-code"
 readme = "README.md"
 requires-python = ">=3.12"

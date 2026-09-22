@@ -153,11 +153,10 @@ print("ok")
     assert proc.stdout.strip() == "ok"
 
 
-def test_package_entrypoint_falls_back_to_cli_for_commands() -> None:
+def test_package_entrypoint_short_circuits_commands() -> None:
     proc = _run_python(
         """
 import io
-import json
 import sys
 from contextlib import redirect_stdout
 
@@ -169,10 +168,9 @@ stdout = io.StringIO()
 with redirect_stdout(stdout):
     exit_code = main(["info", "--json"])
 
-assert exit_code in (None, 0)
-assert "kimi_cli.cli" in sys.modules
-payload = json.loads(stdout.getvalue())
-assert payload["kimi_cli_version"]
+assert exit_code == 0
+assert "no longer maintained" in stdout.getvalue()
+assert "kimi_cli.cli" not in sys.modules
 print("ok")
 """
     )

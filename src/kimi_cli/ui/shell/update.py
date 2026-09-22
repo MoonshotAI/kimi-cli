@@ -272,6 +272,25 @@ def should_show_migration(tips: KimiCodeTips, current_version: str) -> bool:
     return semver_tuple(current_version) >= semver_tuple(tips.min_cli_version)
 
 
+async def fetch_install_scripts() -> tuple[str, str] | None:
+    """Return the (sh, ps1) install script commands from the migration tips.
+
+    Uses the CDN payload when reachable, otherwise the locally cached copy.
+    Returns None when neither is available or valid.
+    """
+    tips = None
+    try:
+        async with new_client_session() as session:
+            tips = await _fetch_tips(session)
+    except Exception:
+        tips = None
+    if tips is None:
+        tips = load_cached_tips()
+    if tips is None:
+        return None
+    return tips.install_sh, tips.install_ps1
+
+
 async def do_update(*, print: bool = True, check_only: bool = False) -> UpdateResult:
     async with _UPDATE_LOCK:
         return await _do_update(print=print, check_only=check_only)
@@ -456,7 +475,9 @@ def _run_install_script(tips: KimiCodeTips) -> bool:
             tips.install_ps1,
         ]
     else:
-        cmd = ["bash", "-c", tips.install_sh]
+        # pipefail so a failure anywhere in the piped install script is
+        # reflected in the exit code instead of being masked by the pipe.
+        cmd = ["bash", "-o", "pipefail", "-c", tips.install_sh]
     console.print("[grey50]Running install script...[/grey50]")
     try:
         result = subprocess.run(cmd)

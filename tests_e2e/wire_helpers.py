@@ -509,7 +509,11 @@ def base_command() -> list[str]:
     override = os.getenv(WIRE_COMMAND_ENV)
     if override is not None:
         override = override.strip()
-    parts = shlex.split(override, posix=os.name != "nt") if override else ["uv", "run", "kimi"]
+    parts = (
+        shlex.split(override, posix=os.name != "nt")
+        if override
+        else ["uv", "run", "python", "-m", "kimi_cli.cli"]
+    )
     return [part for part in parts if part != "--wire"]
 
 

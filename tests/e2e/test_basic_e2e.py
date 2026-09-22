@@ -9,7 +9,7 @@ from kaos.path import KaosPath
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 def _print_trace(label: str, text: str) -> None:
@@ -32,7 +32,9 @@ def _run_print_mode(config_path: Path, work_dir: Path, user_prompt: str) -> tupl
     cmd = [
         "uv",
         "run",
-        "kimi",
+        "python",
+        "-m",
+        "kimi_cli.cli",
         "--print",
         "--yolo",
         "--input-format",
@@ -64,7 +66,9 @@ def _run_shell_mode(config_path: Path, work_dir: Path, user_prompt: str) -> tupl
     cmd = [
         "uv",
         "run",
-        "kimi",
+        "python",
+        "-m",
+        "kimi_cli.cli",
         "--yolo",
         "--prompt",
         user_prompt,
@@ -145,7 +149,9 @@ def _run_wire_mode(
     cmd = [
         "uv",
         "run",
-        "kimi",
+        "python",
+        "-m",
+        "kimi_cli.cli",
         "--wire",
         "--yolo",
         "--config-file",
