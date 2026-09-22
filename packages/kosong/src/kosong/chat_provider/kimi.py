@@ -44,6 +44,7 @@ from kosong.message import (
 )
 from kosong.tooling import Tool
 from kosong.utils.jsonschema import JsonDict, ensure_property_types
+from kosong.utils.typing import JsonType
 
 if TYPE_CHECKING:
 
@@ -383,9 +384,55 @@ def _convert_tool(tool: Tool) -> ChatCompletionToolParam:
     function = converted["function"]
     parameters = function.get("parameters")
     if isinstance(parameters, dict):
-        normalized = ensure_property_types(cast(JsonDict, parameters))
+        normalized = copy.deepcopy(cast(JsonDict, parameters))
+        if isinstance(normalized.get("properties"), dict):
+            normalized.setdefault("type", "object")
+        normalized = _normalize_object_any_of(normalized)
+        normalized = ensure_property_types(normalized)
         function["parameters"] = cast(dict[str, object], normalized)
     return converted
+
+
+def _normalize_object_any_of(schema: JsonDict) -> JsonDict:
+    """Distribute a simple object schema into ``anyOf`` required branches.
+
+    Moonshot rejects ``type`` beside ``anyOf``. MCP tools commonly use this
+    shape solely to require one of several object properties. Distributing the
+    shared object constraints into those branches preserves the schema's
+    meaning while satisfying Moonshot's stricter dialect.
+    """
+    branches = schema.get("anyOf")
+    if not (
+        schema.get("type") == "object"
+        and isinstance(schema.get("properties"), dict)
+        and isinstance(branches, list)
+        and branches
+        and all(
+            isinstance(branch, dict)
+            and set(branch).issubset({"required"})
+            and isinstance(branch.get("required", []), list)
+            for branch in branches
+        )
+    ):
+        return schema
+
+    common = copy.deepcopy(schema)
+    common.pop("anyOf")
+    common_required = common.pop("required", [])
+    if not isinstance(common_required, list):
+        return schema
+
+    distributed: list[JsonType] = []
+    for branch in branches:
+        assert isinstance(branch, dict)
+        branch_required = branch.get("required", [])
+        assert isinstance(branch_required, list)
+        branch_schema = copy.deepcopy(common)
+        required = list(dict.fromkeys([*common_required, *branch_required]))
+        if required:
+            branch_schema["required"] = required
+        distributed.append(branch_schema)
+    return {"anyOf": distributed}
 
 
 class KimiStreamedMessage:

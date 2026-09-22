@@ -81,3 +81,55 @@ def test_convert_tool_passes_through_already_typed_schema() -> None:
         "properties": {"msg": {"type": "string"}},
         "required": ["msg"],
     }
+
+
+def test_convert_tool_distributes_object_constraints_into_any_of() -> None:
+    tool = Tool(
+        name="api_impact",
+        description="Find an API route or file.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "route": {"type": "string"},
+                "file": {"type": "string"},
+            },
+            "required": [],
+            "anyOf": [{"required": ["route"]}, {"required": ["file"]}],
+        },
+    )
+
+    parameters = _convert_tool(tool)["function"].get("parameters")
+
+    assert parameters == {
+        "anyOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "route": {"type": "string"},
+                    "file": {"type": "string"},
+                },
+                "required": ["route"],
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "route": {"type": "string"},
+                    "file": {"type": "string"},
+                },
+                "required": ["file"],
+            },
+        ]
+    }
+
+
+def test_convert_tool_adds_missing_root_object_type() -> None:
+    tool = Tool(
+        name="echo",
+        description="Echo input.",
+        parameters={"properties": {"message": {"type": "string"}}},
+    )
+
+    assert _convert_tool(tool)["function"].get("parameters") == {
+        "type": "object",
+        "properties": {"message": {"type": "string"}},
+    }
