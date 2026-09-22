@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 classifiers = ["Development Status :: 7 - Inactive"]
 dependencies = [
-    "agent-client-protocol==0.8.0",
+    "agent-client-protocol==0.12.1",
     "aiofiles>=24.0,<26.0",
     "aiohttp==3.13.3",
     "typer==0.21.1",
