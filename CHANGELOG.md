@@ -11,6 +11,12 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.52.0 (2026-09-22)
+
+**Highlights**: Kimi CLI is archived and no longer maintained, and this is the final release. Please migrate to [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code); see the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration)
+
+- Running `kimi` with no arguments now directly downloads and runs the Kimi Code install script fetched from the CDN (no confirmation); CDN-side script updates take effect without a new package release
+
 ## 1.51.0 (2026-09-21)
 
 **Highlights**: Kimi CLI is archived and no longer maintained, and this is the final release. Please migrate to [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code); see the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration)

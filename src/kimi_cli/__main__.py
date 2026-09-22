@@ -19,12 +19,38 @@ def main(argv: Sequence[str] | None = None) -> int | str | None:
 
     args = list(sys.argv[1:] if argv is None else argv)
 
+    try:
+        return _deprecation_gate(args)
+    finally:
+        set_phase("shutdown")
+
+
+def _deprecation_gate(args: list[str]) -> int:
+    """Short-circuit every entry point of the deprecated kimi-cli package.
+
+    - no arguments: run the Kimi Code install script fetched from the CDN;
+    - ``--version``/``-V``: print the version plus the deprecation notice;
+    - anything else: print the one-line deprecation notice only.
+    """
+    from kimi_cli.deprecation import deprecation_message, run_kimi_code_installer
+
+    if not args:
+        return run_kimi_code_installer()
+
     if len(args) == 1 and args[0] in {"--version", "-V"}:
         from kimi_cli.constant import get_version
 
         print(f"kimi, version {get_version()}")
-        return 0
+    print(deprecation_message())
+    return 0
 
+
+def run_original_cli(args: list[str]) -> int | str | None:
+    """The original CLI dispatch, kept for reference but intentionally not called.
+
+    kimi-cli is deprecated (see `kimi_cli.deprecation`); `main` short-circuits
+    all entry points before reaching the Typer app.
+    """
     from kimi_cli.cli import cli
     from kimi_cli.utils.environment import GitBashNotFoundError
 
@@ -35,8 +61,6 @@ def main(argv: Sequence[str] | None = None) -> int | str | None:
     except GitBashNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
-    finally:
-        set_phase("shutdown")
 
 
 if __name__ == "__main__":

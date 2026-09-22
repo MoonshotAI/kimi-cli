@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -17,11 +18,13 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _kimi_bin() -> str:
-    """Return the path to the kimi entry-point script inside the venv."""
-    script_dir = "Scripts" if os.name == "nt" else "bin"
-    executable = "kimi.exe" if os.name == "nt" else "kimi"
-    return str(_repo_root() / ".venv" / script_dir / executable)
+def _kimi_cmd() -> list[str]:
+    """Spawn the CLI via the internal `kimi_cli.cli` module entry.
+
+    The installed `kimi` console script is short-circuited to a deprecation
+    notice (kimi-cli is archived), so tests must not spawn it.
+    """
+    return [sys.executable, "-m", "kimi_cli.cli"]
 
 
 class ACPTestClient:
@@ -173,7 +176,7 @@ async def acp_client(
 
     async with acp.spawn_agent_process(
         test_client,
-        _kimi_bin(),
+        *_kimi_cmd(),
         "acp",
         env=env,
         cwd=str(_repo_root()),

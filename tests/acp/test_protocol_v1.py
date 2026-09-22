@@ -9,7 +9,7 @@ import pytest
 
 from kimi_cli.acp.version import CURRENT_VERSION
 
-from .conftest import ACPTestClient, _kimi_bin, _repo_root
+from .conftest import ACPTestClient, _kimi_cmd, _repo_root
 
 pytestmark = pytest.mark.asyncio
 
@@ -159,7 +159,7 @@ async def test_load_session_replays_history(acp_share_dir, tmp_path):
     client1 = ACPTestClient()
     async with acp.spawn_agent_process(
         client1,
-        _kimi_bin(),
+        *_kimi_cmd(),
         "acp",
         env=env,
         cwd=str(_repo_root()),
@@ -175,7 +175,7 @@ async def test_load_session_replays_history(acp_share_dir, tmp_path):
     client2 = ACPTestClient()
     async with acp.spawn_agent_process(
         client2,
-        _kimi_bin(),
+        *_kimi_cmd(),
         "acp",
         env=env,
         cwd=str(_repo_root()),
