@@ -778,7 +778,7 @@ class KimiToolset:
                 server_name=server_name,
             )
             self._mcp_servers[server_name] = MCPServerInfo(
-                status="unauthorized", client=None, tools=[]
+                status="unauthorized", client=None, tools=[], connection_stack=None
             )
 
         async def _connect_server(
@@ -790,11 +790,13 @@ class KimiToolset:
             server_info.status = "connecting"
             try:
                 assert server_info.client is not None
-                async with server_info.client as client:
-                    for tool in await client.list_tools():
-                        server_info.tools.append(
-                            MCPTool(server_name, tool, client, runtime=runtime)
-                        )
+                # Keep the initialized session alive for the toolset lifetime. Re-entering a
+                # keep-alive stdio transport would send initialize again to the same process.
+                connection_stack = contextlib.AsyncExitStack()
+                server_info.connection_stack = connection_stack
+                client = await connection_stack.enter_async_context(server_info.client)
+                for tool in await client.list_tools():
+                    server_info.tools.append(MCPTool(server_name, tool, client, runtime=runtime))
 
                 for tool in server_info.tools:
                     self.add(tool)
@@ -803,6 +805,9 @@ class KimiToolset:
                 logger.info("Connected MCP server: {server_name}", server_name=server_name)
                 return server_name, None
             except Exception as e:
+                if server_info.connection_stack is not None:
+                    await server_info.connection_stack.aclose()
+                    server_info.connection_stack = None
                 logger.error(
                     "Failed to connect MCP server: {server_name}, error: {error}",
                     server_name=server_name,
@@ -859,7 +864,10 @@ class KimiToolset:
 
                 client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
                 self._mcp_servers[server_name] = MCPServerInfo(
-                    status="pending", client=client, tools=[]
+                    status="pending",
+                    client=client,
+                    tools=[],
+                    connection_stack=None,
                 )
 
         if in_background:
@@ -890,6 +898,12 @@ class KimiToolset:
             with contextlib.suppress(Exception, asyncio.CancelledError):
                 await self._mcp_loading_task
         for server_info in self._mcp_servers.values():
+            if server_info.connection_stack is not None:
+                try:
+                    await server_info.connection_stack.aclose()
+                except Exception:
+                    logger.warning("Failed to close MCP connection", exc_info=True)
+                server_info.connection_stack = None
             if server_info.client is not None:
                 try:
                     await server_info.client.close()
@@ -902,6 +916,7 @@ class MCPServerInfo:
     status: Literal["pending", "connecting", "connected", "failed", "unauthorized"]
     client: fastmcp.Client[Any] | None
     tools: list[MCPTool[Any]]
+    connection_stack: contextlib.AsyncExitStack | None
 
 
 class MCPTool[T: ClientTransport](CallableTool):
