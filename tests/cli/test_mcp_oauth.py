@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -60,6 +61,17 @@ def test_create_mcp_oauth_uses_persistent_storage_without_warning(tmp_path, monk
     assert not any("in-memory token storage" in str(warning.message) for warning in caught)
 
 
+def test_create_mcp_oauth_forwards_scopes(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    from kimi_cli.mcp_oauth import create_mcp_oauth
+
+    auth = create_mcp_oauth("https://mcp.example.test/mcp", scopes=["read", "write"])
+
+    assert auth.context.client_metadata.scope == "read write"
+    assert auth.context.server_url == "https://mcp.example.test/mcp"
+
+
 def test_prepare_mcp_server_config_replaces_oauth_literal_without_mutating(tmp_path, monkeypatch):
     monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
 
@@ -79,6 +91,142 @@ def test_prepare_mcp_server_config_replaces_oauth_literal_without_mutating(tmp_p
     assert server["auth"] == "oauth"
     assert prepared["headers"] == {"x-test": "yes"}
     assert isinstance(prepared["auth"], OAuth)
+
+
+def test_prepare_mcp_server_config_forwards_scopes(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    from kimi_cli.mcp_oauth import prepare_mcp_server_config
+
+    server = {
+        "url": "https://mcp.example.test/mcp",
+        "transport": "http",
+        "auth": "oauth",
+        "scopes": ["organizations:read", "projects:read"],
+    }
+
+    prepared = prepare_mcp_server_config(server)
+
+    assert server["auth"] == "oauth"
+    assert prepared["scopes"] == server["scopes"]
+    assert prepared["auth"].context.client_metadata.scope == "organizations:read projects:read"
+
+
+def test_prepare_mcp_server_config_preserves_url_transport_inference(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    from fastmcp.client.transports import SSETransport
+    from fastmcp.mcp_config import MCPConfig
+
+    from kimi_cli.mcp_oauth import prepare_mcp_server_config
+
+    prepared = prepare_mcp_server_config(
+        {
+            "url": "https://mcp.example.test/sse",
+            "auth": "oauth",
+            "scopes": ["read"],
+        }
+    )
+    config = MCPConfig.model_validate({"mcpServers": {"server": prepared}})
+    remote = config.mcpServers["server"]
+
+    assert remote.transport is None
+    assert isinstance(remote.to_transport(), SSETransport)
+
+
+def test_prepare_mcp_server_config_rejects_non_string_scopes(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    from kimi_cli.mcp_oauth import prepare_mcp_server_config
+
+    with pytest.raises(ValueError, match="list of strings"):
+        prepare_mcp_server_config(
+            {
+                "url": "https://mcp.example.test/mcp",
+                "auth": "oauth",
+                "scopes": ["read", 1],
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_patched_oauth_skips_preflight_request(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    from kimi_cli.mcp_oauth import create_mcp_oauth
+
+    auth = create_mcp_oauth("https://mcp.example.test/mcp")
+    with patch("webbrowser.open") as open_browser:
+        await auth.redirect_handler("https://auth.example.test/authorize")
+
+    open_browser.assert_called_once_with("https://auth.example.test/authorize")
+
+
+@pytest.mark.asyncio
+async def test_patched_oauth_accepts_created_token_response(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    from fastmcp.client.auth.oauth import OAuth
+
+    from kimi_cli.mcp_oauth import create_mcp_oauth
+
+    auth = create_mcp_oauth("https://mcp.example.test/mcp")
+    base_handler = AsyncMock()
+    with patch.object(OAuth, "_handle_token_response", base_handler):
+        response = type("Response", (), {"status_code": 201})()
+        await auth._handle_token_response(response)
+
+    assert response.status_code == 200
+    base_handler.assert_awaited_once_with(response)
+
+
+@pytest.mark.asyncio
+async def test_patched_oauth_accepts_created_refresh_response(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    from fastmcp.client.auth.oauth import OAuth
+
+    from kimi_cli.mcp_oauth import create_mcp_oauth
+
+    auth = create_mcp_oauth("https://mcp.example.test/mcp")
+    base_handler = AsyncMock(return_value=True)
+    with patch.object(OAuth, "_handle_refresh_response", base_handler):
+        response = type("Response", (), {"status_code": 201})()
+        result = await auth._handle_refresh_response(response)
+
+    assert result is True
+    assert response.status_code == 200
+    base_handler.assert_awaited_once_with(response)
+
+
+def test_mcp_list_reports_invalid_scopes(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    from typer.testing import CliRunner
+
+    from kimi_cli.cli.mcp import cli
+
+    with (
+        patch(
+            "kimi_cli.cli.mcp._load_mcp_config",
+            return_value={
+                "mcpServers": {
+                    "broken": {
+                        "url": "https://mcp.example.test/mcp",
+                        "transport": "http",
+                        "auth": "oauth",
+                        "scopes": ["read", 1],
+                    }
+                }
+            },
+        ),
+        patch("kimi_cli.cli.mcp._has_oauth_tokens", return_value=False),
+    ):
+        result = CliRunner().invoke(cli, ["list"])
+
+    assert result.exit_code == 0
+    assert "Invalid OAuth scopes for MCP server 'broken'" in result.output
+    assert "[invalid scopes]" in result.output
 
 
 @pytest.mark.asyncio

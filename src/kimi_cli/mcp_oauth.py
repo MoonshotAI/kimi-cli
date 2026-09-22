@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from kimi_cli.share import get_share_dir
 
 if TYPE_CHECKING:
+    import httpx
     from fastmcp.client.auth.oauth import OAuth, TokenStorageAdapter
     from key_value.aio.stores.filetree import FileTreeStore
 
@@ -55,10 +56,53 @@ async def has_mcp_oauth_tokens(server_url: str) -> bool:
         return False
 
 
-def create_mcp_oauth(server_url: str) -> OAuth:
+def validate_mcp_scopes(scopes: object | None) -> list[str] | None:
+    if scopes is None:
+        return None
+    if not isinstance(scopes, list):
+        raise ValueError("OAuth MCP server scopes must be a list of strings.")
+    validated: list[str] = []
+    for scope in cast(list[object], scopes):
+        if not isinstance(scope, str):
+            raise ValueError("OAuth MCP server scopes must be a list of strings.")
+        validated.append(scope)
+    return validated
+
+
+def create_mcp_oauth(server_url: str, scopes: object | None = None) -> OAuth:
     from fastmcp.client.auth.oauth import OAuth
 
-    return OAuth(mcp_url=server_url, token_storage=create_mcp_oauth_store())
+    validated_scopes = validate_mcp_scopes(scopes)
+
+    class _PatchedOAuth(OAuth):
+        """Apply compatibility workarounds for MCP OAuth providers.
+
+        FastMCP 3.2.4 still performs a pre-flight authorization request that
+        treats HTTP 400 as an invalid client, and only accepts HTTP 200 from
+        the token endpoint. Some MCP providers use HTTP 400 for the normal
+        login page and HTTP 201 for a successful token exchange.
+        """
+
+        async def redirect_handler(self, authorization_url: str) -> None:
+            import webbrowser
+
+            webbrowser.open(authorization_url)
+
+        async def _handle_token_response(self, response: httpx.Response) -> None:
+            if response.status_code == 201:
+                response.status_code = 200
+            await super()._handle_token_response(response)
+
+        async def _handle_refresh_response(self, response: httpx.Response) -> bool:
+            if response.status_code == 201:
+                response.status_code = 200
+            return await super()._handle_refresh_response(response)
+
+    return _PatchedOAuth(
+        mcp_url=server_url,
+        scopes=validated_scopes,
+        token_storage=create_mcp_oauth_store(),
+    )
 
 
 def prepare_mcp_server_config(server_config: dict[str, Any]) -> dict[str, Any]:
@@ -69,4 +113,5 @@ def prepare_mcp_server_config(server_config: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(server_url, str) or not server_url:
         raise ValueError("OAuth MCP server config must include a non-empty URL.")
 
-    return {**server_config, "auth": create_mcp_oauth(server_url)}
+    scopes = server_config.get("scopes")
+    return {**server_config, "auth": create_mcp_oauth(server_url, scopes=scopes)}

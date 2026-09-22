@@ -29,6 +29,7 @@ kimi mcp add [OPTIONS] NAME [TARGET_OR_COMMAND...]
 | `--env KEY=VALUE` | `-e` | 环境变量（仅 `stdio`），可多次指定 |
 | `--header KEY:VALUE` | `-H` | HTTP Header（仅 `http`），可多次指定 |
 | `--auth TYPE` | `-a` | 认证类型（如 `oauth`，仅 `http`） |
+| `--scope SCOPE` | `-s` | OAuth scope（仅 `oauth`），可多次指定 |
 
 ## `list`
 
@@ -42,6 +43,7 @@ kimi mcp list
 - 配置文件路径
 - 每个服务器的名称、传输类型和目标
 - OAuth 服务器的授权状态
+- 已配置的 OAuth scope
 
 ## `remove`
 

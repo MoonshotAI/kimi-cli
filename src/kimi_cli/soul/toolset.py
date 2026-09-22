@@ -846,7 +846,8 @@ class KimiToolset:
                         _mark_oauth_unauthorized(server_name)
                         continue
                     try:
-                        auth = create_mcp_oauth(server_config.url)
+                        scopes = (server_config.model_extra or {}).get("scopes")
+                        auth = create_mcp_oauth(server_config.url, scopes=scopes)
                     except Exception as e:
                         logger.debug(
                             "Failed to create MCP OAuth storage for {server_name}: {error}",
@@ -858,6 +859,7 @@ class KimiToolset:
                     server_config = server_config.model_copy(update={"auth": auth})
 
                 client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
+
                 self._mcp_servers[server_name] = MCPServerInfo(
                     status="pending", client=client, tools=[]
                 )

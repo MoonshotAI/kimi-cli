@@ -30,6 +30,10 @@ kimi mcp add --transport http context7 https://mcp.context7.com/mcp \
 
 # Using OAuth authentication
 kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp
+
+# Request provider-specific OAuth scopes
+kimi mcp add --transport http --auth oauth supabase https://mcp.supabase.com/mcp \
+  --scope "organizations:read" --scope "projects:read"
 ```
 
 Add a stdio server (local process):
@@ -61,6 +65,9 @@ kimi mcp auth linear
 ```
 
 This will open a browser to complete the OAuth flow. After successful authorization, Kimi Code CLI will save the token for future use.
+
+Use `--scope` more than once when the provider requires specific OAuth scopes. Scopes are
+stored in `~/.kimi/mcp.json` and used by both `kimi mcp auth` and runtime MCP connections.
 
 MCP OAuth tokens are stored in `~/.kimi/mcp-oauth/`. After upgrading from older versions that used FastMCP 2.x, the old token cache is not migrated automatically; if `kimi mcp list` shows that an OAuth server needs authorization, run `kimi mcp auth <name>` again.
 

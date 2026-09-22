@@ -29,6 +29,7 @@ kimi mcp add [OPTIONS] NAME [TARGET_OR_COMMAND...]
 | `--env KEY=VALUE` | `-e` | Environment variable (`stdio` only), can be specified multiple times |
 | `--header KEY:VALUE` | `-H` | HTTP header (`http` only), can be specified multiple times |
 | `--auth TYPE` | `-a` | Authentication type (e.g., `oauth`, `http` only) |
+| `--scope SCOPE` | `-s` | OAuth scope (`oauth` only), can be specified multiple times |
 
 ## `list`
 
@@ -42,6 +43,7 @@ Output includes:
 - Configuration file path
 - Name, transport type, and target for each server
 - Authorization status for OAuth servers
+- Configured OAuth scopes
 
 ## `remove`
 

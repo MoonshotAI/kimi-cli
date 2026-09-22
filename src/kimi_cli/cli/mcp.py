@@ -91,6 +91,10 @@ Transport = Literal["stdio", "http"]
       # Add streamable HTTP server with OAuth authorization:\n
       kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp\n
       \n
+      # Add OAuth server with specific scopes (e.g., Supabase):\n
+      kimi mcp add --transport http --auth oauth supabase https://mcp.supabase.com/mcp \\\n
+        --scope "organizations:read" --scope "projects:read" --scope "database:read"\n
+      \n
       # Add stdio server:\n
       kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
     """.strip(),  # noqa: E501
@@ -139,6 +143,14 @@ def mcp_add(
             help="Authorization type (e.g., 'oauth').",
         ),
     ] = None,
+    scope: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scope",
+            "-s",
+            help="OAuth scope to request. Can be specified multiple times.",
+        ),
+    ] = None,
 ):
     """Add an MCP server."""
     config = _load_mcp_config()
@@ -160,6 +172,9 @@ def mcp_add(
             raise typer.Exit(code=1)
         if auth:
             typer.echo("--auth is only valid for http transport.", err=True)
+            raise typer.Exit(code=1)
+        if scope:
+            typer.echo("--scope is only valid for http transport.", err=True)
             raise typer.Exit(code=1)
         command, *command_args = server_args
         server_config: dict[str, Any] = {"command": command, "args": command_args}
@@ -185,6 +200,11 @@ def mcp_add(
             )
         if auth:
             server_config["auth"] = auth
+        if scope:
+            if auth != "oauth":
+                typer.echo("--scope is only valid with --auth oauth.", err=True)
+                raise typer.Exit(code=1)
+            server_config["scopes"] = scope
 
     if "mcpServers" not in config:
         config["mcpServers"] = {}
@@ -242,6 +262,21 @@ def mcp_list():
             if transport == "streamable-http":
                 transport = "http"
             line = f"{name} ({transport}): {server['url']}"
+            if server.get("scopes") is not None and server.get("auth") == "oauth":
+                from kimi_cli.mcp_oauth import validate_mcp_scopes
+
+                try:
+                    scopes = validate_mcp_scopes(server["scopes"])
+                except ValueError:
+                    typer.echo(
+                        f"Invalid OAuth scopes for MCP server '{name}': "
+                        "expected a list of strings.",
+                        err=True,
+                    )
+                    line += " [invalid scopes]"
+                else:
+                    if scopes:
+                        line += f" [scopes: {', '.join(scopes)}]"
             if server.get("auth") == "oauth" and not _has_oauth_tokens(server["url"]):
                 line += " [authorization required - run: kimi mcp auth " + name + "]"
         else:
