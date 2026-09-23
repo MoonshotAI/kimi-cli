@@ -124,7 +124,7 @@ By default, up to 4 background tasks can run simultaneously. This can be adjuste
 
 ## Multi-line input
 
-Sometimes you need to enter multiple lines, such as pasting a code snippet or error log. Press `Ctrl-J` or `Alt-Enter` to insert a newline instead of sending the message immediately.
+Sometimes you need to enter multiple lines, such as pasting a code snippet or error log. Press `Shift-Enter`, `Ctrl-J`, or `Alt-Enter` to insert a newline instead of sending the message immediately.
 
 After finishing your input, press `Enter` to send the complete message.
 

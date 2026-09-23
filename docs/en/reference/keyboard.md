@@ -9,8 +9,9 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | `Ctrl-X` | Toggle agent/shell mode |
 | `Shift-Tab` | Toggle plan mode (read-only research and planning) |
 | `Ctrl-O` | Edit in external editor (`$VISUAL`/`$EDITOR`) |
-| `Ctrl-J` | Insert newline |
-| `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
+| `Shift-Enter` | Insert newline |
+| `Ctrl-J` | Insert newline (same as `Shift-Enter`) |
+| `Alt-Enter` | Insert newline (same as `Shift-Enter`) |
 | `Ctrl-S` | Steer: inject input immediately into the running turn (during streaming) |
 | `Ctrl-V` | Paste (supports images and video files) |
 | `Ctrl-E` | Expand full approval request content |
@@ -60,10 +61,11 @@ Useful for writing multi-line prompts, complex code snippets, etc.
 
 ## Multi-line input
 
-### `Ctrl-J` / `Alt-Enter`: Insert newline
+### `Shift-Enter` / `Ctrl-J` / `Alt-Enter`: Insert newline
 
 By default, pressing `Enter` submits the input. To enter multi-line content, use:
 
+- `Shift-Enter`: Insert newline at any position
 - `Ctrl-J`: Insert newline at any position
 - `Alt-Enter`: Insert newline at any position
 
