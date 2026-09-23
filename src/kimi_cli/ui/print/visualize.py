@@ -1,7 +1,9 @@
-from typing import Protocol
+import builtins
+import sys
+from typing import Any, Protocol, TextIO, cast
 
-import rich
 from kosong.message import Message
+from rich.console import Console
 
 from kimi_cli.cli import OutputFormat
 from kimi_cli.soul.message import tool_result_to_message
@@ -31,9 +33,44 @@ def _merge_content(buffer: list[ContentPart], part: ContentPart) -> None:
         buffer.append(part)
 
 
+def _encode_for_stream(text: str, stream: TextIO) -> str:
+    encoding = getattr(stream, "encoding", None)
+    if encoding is None:
+        return text
+
+    try:
+        return text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+    except (LookupError, UnicodeError):
+        return text.encode("ascii", errors="replace").decode("ascii")
+
+
+class _EncodingSafeStream:
+    def __init__(self, stream: TextIO) -> None:
+        self._stream = stream
+
+    @property
+    def encoding(self) -> str | None:
+        return getattr(self._stream, "encoding", None)
+
+    def write(self, text: str) -> int:
+        return self._stream.write(_encode_for_stream(text, self._stream))
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._stream, name)
+
+
+def _safe_print(text: str) -> None:
+    """Print text while replacing characters unsupported by stdout's encoding."""
+    builtins.print(_encode_for_stream(text, sys.stdout), flush=True)
+
+
 class TextPrinter(Printer):
     def feed(self, msg: WireMessage) -> None:
-        rich.print(msg)
+        safe_stream = cast(TextIO, _EncodingSafeStream(sys.stdout))
+        Console(file=safe_stream).print(msg)
 
     def flush(self) -> None:
         pass
@@ -77,11 +114,11 @@ class JsonPrinter(Printer):
                 self._flush_assistant_message()
                 self._flush_notifications()
                 message = tool_result_to_message(result)
-                print(message.model_dump_json(exclude_none=True), flush=True)
+                _safe_print(message.model_dump_json(exclude_none=True))
             case PlanDisplay() as plan:
                 self._flush_assistant_message()
                 self._flush_notifications()
-                print(plan.model_dump_json(exclude_none=True), flush=True)
+                _safe_print(plan.model_dump_json(exclude_none=True))
             case _:
                 # ignore other messages
                 pass
@@ -100,14 +137,14 @@ class JsonPrinter(Printer):
             content=self._content_buffer,
             tool_calls=self._tool_call_buffer or None,
         )
-        print(message.model_dump_json(exclude_none=True), flush=True)
+        _safe_print(message.model_dump_json(exclude_none=True))
 
         self._content_buffer.clear()
         self._tool_call_buffer.clear()
         self._last_tool_call = None
 
     def _emit_notification(self, notification: Notification) -> None:
-        print(notification.model_dump_json(exclude_none=True), flush=True)
+        _safe_print(notification.model_dump_json(exclude_none=True))
 
     def _flush_notifications(self) -> None:
         for notification in self._pending_notifications:
@@ -138,7 +175,7 @@ class FinalOnlyTextPrinter(Printer):
         message = Message(role="assistant", content=self._content_buffer)
         text = message.extract_text()
         if text:
-            print(text, flush=True)
+            _safe_print(text)
         self._content_buffer.clear()
 
 
@@ -162,7 +199,7 @@ class FinalOnlyJsonPrinter(Printer):
         text = message.extract_text()
         if text:
             final_message = Message(role="assistant", content=text)
-            print(final_message.model_dump_json(exclude_none=True), flush=True)
+            _safe_print(final_message.model_dump_json(exclude_none=True))
         self._content_buffer.clear()
 
 
