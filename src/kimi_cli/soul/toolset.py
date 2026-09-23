@@ -914,8 +914,9 @@ class MCPTool[T: ClientTransport](CallableTool):
         runtime: Runtime,
         **kwargs: Any,
     ):
+        tool_name = f"{server_name}_{mcp_tool.name}"
         super().__init__(
-            name=mcp_tool.name,
+            name=tool_name,
             description=(
                 f"This is an MCP (Model Context Protocol) tool from MCP server `{server_name}`.\n\n"
                 f"{mcp_tool.description or 'No description provided.'}"
@@ -927,7 +928,7 @@ class MCPTool[T: ClientTransport](CallableTool):
         self._client = client
         self._runtime = runtime
         self._timeout = timedelta(milliseconds=runtime.config.mcp.client.tool_call_timeout_ms)
-        self._action_name = f"mcp:{mcp_tool.name}"
+        self._action_name = f"mcp:{tool_name}"
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
         description = f"Call MCP tool `{self._mcp_tool.name}`."
