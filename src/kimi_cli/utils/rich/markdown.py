@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Iterable, Mapping
 from typing import ClassVar, get_args
@@ -10,9 +11,9 @@ from typing import ClassVar, get_args
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 from rich import box
-from rich._loop import loop_first
 from rich._stack import Stack
-from rich.console import Console, ConsoleOptions, JustifyMethod, RenderResult
+from rich.cells import cell_len, chop_cells
+from rich.console import Console, ConsoleOptions, Group, JustifyMethod, RenderResult
 from rich.containers import Renderables
 from rich.jupyter import JupyterMixin
 from rich.rule import Rule
@@ -25,6 +26,7 @@ from rich.text import Text, TextType
 from kimi_cli.utils.rich.syntax import KIMI_ANSI_THEME_NAME, resolve_code_theme
 
 LIST_INDENT_WIDTH = 2
+_WORD_WITH_TRAILING_SPACE = re.compile(r"\S+\s*")
 
 _FALLBACK_STYLES: Mapping[str, Style] = {
     "markdown.paragraph": Style(),
@@ -157,7 +159,11 @@ class TextElement(MarkdownElement):
         self.text = Text(justify="left")
 
     def on_text(self, context: MarkdownContext, text: TextType) -> None:
-        self.text.append(text, context.current_style if isinstance(text, str) else None)
+        if isinstance(text, str):
+            style = context.current_style
+            self.text.append(text, None if style._null else style)
+        else:
+            self.text.append_text(text)
 
     def on_leave(self, context: MarkdownContext) -> None:
         context.leave_style()
@@ -430,66 +436,138 @@ class ListItem(TextElement):
 
     def __init__(self, indent: int = 0) -> None:
         self.indent = indent
-        self.elements: Renderables = Renderables()
+        self.elements: list[MarkdownElement] = []
 
     def on_child_close(self, context: MarkdownContext, child: MarkdownElement) -> bool:
         self.elements.append(child)
         return False
 
-    def render_bullet(self, console: Console, options: ConsoleOptions) -> RenderResult:
-        lines = console.render_lines(self.elements, options, style=self.style)
-        indent_padding_len = LIST_INDENT_WIDTH * self.indent
-        indent_text = " " * indent_padding_len
-        bullet = Segment("• ")
-        new_line = Segment("\n")
-        bullet_width = len(bullet.text)
-        for first, line in loop_first(lines):
-            if first:
-                if indent_text:
-                    yield Segment(indent_text)
-                yield bullet
+    def _render_complex_item(
+        self,
+        console: Console,
+        options: ConsoleOptions,
+        first_prefix: str,
+        rest_prefix: str,
+    ) -> RenderResult:
+        available_width = max(
+            1,
+            options.max_width - max(cell_len(first_prefix), cell_len(rest_prefix)),
+        )
+        lines = console.render_lines(
+            Group(*self.elements),
+            options.update(width=available_width),
+            style=self.style,
+            pad=False,
+        )
+        for line_index, line in enumerate(lines):
+            line_segments = list(line)
+            while line_segments:
+                segment = line_segments[-1]
+                if segment.control is not None:
+                    break
+                trimmed_text = segment.text.rstrip(" ")
+                if trimmed_text != segment.text:
+                    if trimmed_text:
+                        line_segments[-1] = Segment(trimmed_text, segment.style, segment.control)
+                    else:
+                        line_segments.pop()
+                    continue
+                break
+            if line_index == 0:
+                yield Segment(first_prefix)
             else:
-                plain = "".join(segment.text for segment in line)
-                if self._line_starts_with_list_marker(plain):
-                    prefix = ""
-                else:
+                plain = "".join(segment.text for segment in line_segments)
+                if not self._line_starts_with_list_marker(plain):
                     existing = len(plain) - len(plain.lstrip(" "))
-                    target = indent_padding_len + bullet_width
-                    missing = max(0, target - existing)
-                    prefix = " " * missing
-                if prefix:
-                    yield Segment(prefix)
-            yield from line
-            yield new_line
+                    missing = max(0, cell_len(rest_prefix) - existing)
+                    if missing:
+                        yield Segment(" " * missing)
+            yield from line_segments
+            yield Segment.line()
+
+    def _render_wrapped_text_item(
+        self,
+        options: ConsoleOptions,
+        text: Text,
+        first_prefix: str,
+        rest_prefix: str,
+    ) -> RenderResult:
+        available_width = max(
+            1,
+            options.max_width - max(cell_len(first_prefix), cell_len(rest_prefix)),
+        )
+        wrapped_lines: list[Text] = []
+        for explicit_line in text.split(allow_blank=True):
+            if not explicit_line.plain:
+                wrapped_lines.append(Text(""))
+                continue
+            offsets: list[int] = []
+            line_width = 0
+            for match in _WORD_WITH_TRAILING_SPACE.finditer(explicit_line.plain):
+                token = match.group(0)
+                visible = token.rstrip()
+                visible_width = cell_len(visible)
+                token_width = cell_len(token)
+                token_start = match.start()
+                remaining_width = available_width - line_width
+                if visible_width <= remaining_width:
+                    line_width += token_width
+                    continue
+                if visible_width > available_width:
+                    if line_width:
+                        offsets.append(token_start)
+                    char_offset = token_start
+                    for piece in chop_cells(visible, available_width)[:-1]:
+                        char_offset += len(piece)
+                        offsets.append(char_offset)
+                    trailing = token[len(visible) :]
+                    line_width = cell_len(chop_cells(visible, available_width)[-1] + trailing)
+                    continue
+                if line_width:
+                    offsets.append(token_start)
+                line_width = token_width
+            pieces = explicit_line.divide(offsets) if offsets else [explicit_line.copy()]
+            for piece in pieces:
+                piece.rstrip()
+            wrapped_lines.extend(pieces)
+        for line_index, line in enumerate(wrapped_lines):
+            prefixed = Text(first_prefix if line_index == 0 else rest_prefix, end="")
+            prefixed.append_text(line)
+            yield prefixed
+            yield Segment.line()
+
+    def render_bullet(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        elements = list(self.elements)
+        if len(elements) == 1 and isinstance(elements[0], Paragraph):
+            indent = " " * (LIST_INDENT_WIDTH * self.indent)
+            text = elements[0].text.copy()
+            yield from self._render_wrapped_text_item(options, text, f"{indent}• ", f"{indent}  ")
+            return
+        indent = " " * (LIST_INDENT_WIDTH * self.indent)
+        yield from self._render_complex_item(console, options, f"{indent}• ", f"{indent}  ")
 
     def render_number(
         self, console: Console, options: ConsoleOptions, number: int, last_number: int
     ) -> RenderResult:
-        lines = console.render_lines(self.elements, options, style=self.style)
-        new_line = Segment("\n")
-        indent_padding_len = LIST_INDENT_WIDTH * self.indent
-        indent_text = " " * indent_padding_len
-        numeral_text = f"{number}. "
-        numeral = Segment(numeral_text)
-        numeral_width = len(numeral_text)
-        for first, line in loop_first(lines):
-            if first:
-                if indent_text:
-                    yield Segment(indent_text)
-                yield numeral
-            else:
-                plain = "".join(segment.text for segment in line)
-                if self._line_starts_with_list_marker(plain):
-                    prefix = ""
-                else:
-                    existing = len(plain) - len(plain.lstrip(" "))
-                    target = indent_padding_len + numeral_width
-                    missing = max(0, target - existing)
-                    prefix = " " * missing
-                if prefix:
-                    yield Segment(prefix)
-            yield from line
-            yield new_line
+        elements = list(self.elements)
+        numeral = f"{number}. "
+        if len(elements) == 1 and isinstance(elements[0], Paragraph):
+            indent = " " * (LIST_INDENT_WIDTH * self.indent)
+            text = elements[0].text.copy()
+            yield from self._render_wrapped_text_item(
+                options,
+                text,
+                f"{indent}{numeral}",
+                f"{indent}{' ' * len(numeral)}",
+            )
+            return
+        indent = " " * (LIST_INDENT_WIDTH * self.indent)
+        yield from self._render_complex_item(
+            console,
+            options,
+            f"{indent}{numeral}",
+            f"{indent}{' ' * len(numeral)}",
+        )
 
 
 class Link(TextElement):
@@ -777,7 +855,6 @@ class Markdown(JupyterMixin):
                     if should_render:
                         if new_line and render_started:
                             yield _new_line_segment
-
                         rendered = console.render(element, context.options)
                         for segment in rendered:
                             render_started = True
