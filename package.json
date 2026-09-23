@@ -1,0 +1,56 @@
+{
+  "name": "kimi-cli",
+  "version": "2.0.0",
+  "module": "src/kimi_cli_ts/index.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "kimi": "src/kimi_cli_ts/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/kimi_cli_ts/index.ts",
+    "kimi": "bun run start",
+    "dev": "bun --watch run src/kimi_cli_ts/index.ts",
+    "test": "bun test",
+    "build": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi",
+    "build:linux-x64": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=bun-linux-x64",
+    "build:linux-x64-baseline": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=bun-linux-x64-baseline",
+    "build:linux-arm64": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=bun-linux-arm64",
+    "build:darwin-x64": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=bun-darwin-x64",
+    "build:darwin-arm64": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=bun-darwin-arm64",
+    "build:windows-x64": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi.exe --target=bun-windows-x64",
+    "lint": "biome check src/",
+    "format": "biome format --write src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
+    "@types/bun": "latest",
+    "@types/micromatch": "^4.0.10",
+    "@types/react": "^19.2.14",
+    "react-devtools-core": "^7.0.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.81.0",
+    "@google/genai": "^1.48.0",
+    "@iarna/toml": "^2.2.5",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "globby": "^16.2.0",
+    "ink": "^6.8.0",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "log4js": "^6.9.1",
+    "micromatch": "^4.0.8",
+    "nanoid": "^5.1.7",
+    "openai": "^6.33.0",
+    "react": "^19.2.4",
+    "smol-toml": "^1.6.1",
+    "zod": "^4.3.6",
+    "zod-to-json-schema": "^3.25.2"
+  }
+}
