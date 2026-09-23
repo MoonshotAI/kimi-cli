@@ -231,6 +231,49 @@ async def test_replace_mixed_multiple_edits(
     assert await file_path.read_text() == "fruit apple tasty apple cherry"
 
 
+async def test_replace_reports_replacement_count(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """A single replace_all edit reports the number of occurrences replaced."""
+    file_path = temp_work_dir / "test.txt"
+    await file_path.write_text("apple banana apple cherry apple")
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=Edit(old="apple", new="fruit", replace_all=True),
+        )
+    )
+
+    assert not result.is_error
+    assert "3 total replacement(s)" in result.message
+
+
+async def test_replace_count_accounts_for_interacting_edits(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """When an earlier edit changes how many times a later edit matches, the
+    reported count must follow the running content, not the original file."""
+    file_path = temp_work_dir / "test.txt"
+    await file_path.write_text("foo bar foo")
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=[
+                Edit(old="foo", new="foo bar", replace_all=True),
+                Edit(old="bar", new="baz", replace_all=True),
+            ],
+        )
+    )
+
+    assert not result.is_error
+    # foo->"foo bar" replaces 2, producing "foo bar bar foo bar"; bar->baz then
+    # replaces 3. Counting against the original file would wrongly report 3.
+    assert await file_path.read_text() == "foo baz baz foo baz"
+    assert "5 total replacement(s)" in result.message
+
+
 async def test_replace_empty_strings(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
