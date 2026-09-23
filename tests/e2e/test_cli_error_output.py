@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -35,17 +36,18 @@ def _run_kimi(args: list[str], *, share_dir: Path) -> subprocess.CompletedProces
 def _normalize_cli_error_output(text: str) -> str:
     """Normalize Rich/Click error boxes across platforms for snapshot tests."""
     text = text.replace("\r\n", "\n")
+    text = re.sub(r"kimi\.\d+\.log", "kimi.log", text)
     lines: list[str] = []
     in_box = False
     for line in text.splitlines():
-        if line.startswith(("╭", "┌")) and "Error" in line:
+        if line.startswith(("╭", "┌", "+-")) and "Error" in line:
             in_box = True
             lines.append("Error:")
             continue
-        if in_box and line.startswith(("╰", "└")):
+        if in_box and line.startswith(("╰", "└", "+-")):
             in_box = False
             continue
-        if in_box and line.startswith(("│", "┃")) and line.endswith(("│", "┃")):
+        if in_box and line.startswith(("│", "┃", "|")) and line.endswith(("│", "┃", "|")):
             inner = line[1:-1].strip()
             if inner:
                 lines.append(inner)
