@@ -237,6 +237,7 @@ def list_files_git(
             capture_output=True,
             text=True,
             timeout=_GIT_LS_FILES_TIMEOUT,
+            encoding="utf-8",
         )
         if result.returncode != 0:
             return None
