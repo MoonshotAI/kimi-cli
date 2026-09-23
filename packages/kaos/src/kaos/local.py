@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
+import subprocess
 from asyncio.subprocess import Process as AsyncioProcess
 from collections.abc import AsyncGenerator
+from contextlib import suppress
 from pathlib import Path, PurePath
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if os.name == "nt":
     import ntpath as pathmodule
@@ -59,7 +62,36 @@ class LocalKaos:
             return await self._process.wait()
 
         async def kill(self) -> None:
-            self._process.kill()
+            if self._process.returncode is not None:
+                return
+
+            if os.name == "nt":
+                # The process has its own console process group, so Ctrl+Break
+                # cannot reach Kimi or another independently launched command.
+                try:
+                    os.kill(self.pid, signal.CTRL_BREAK_EVENT)
+                    await asyncio.sleep(0.1)
+                except OSError:
+                    pass
+                killer = await asyncio.create_subprocess_exec(
+                    "taskkill",
+                    "/PID",
+                    str(self.pid),
+                    "/T",
+                    "/F",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await killer.wait()
+                if killer.returncode != 0 and self._process.returncode is None:
+                    self._process.kill()
+            else:
+                # exec() starts each command in a dedicated session. Its PID is
+                # therefore also the process-group ID and safe to target here.
+                with suppress(ProcessLookupError):
+                    os_module = cast(Any, os)
+                    signal_module = cast(Any, signal)
+                    os_module.killpg(self.pid, signal_module.SIGKILL)
 
     def pathclass(self) -> type[PurePath]:
         return PurePathClass
@@ -166,13 +198,26 @@ class LocalKaos:
         if not args:
             raise ValueError("At least one argument (the program to execute) is required.")
 
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
+        if os.name == "nt":
+            process = await asyncio.create_subprocess_exec(
+                *args,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+                # Isolate console control events used by Process.kill().
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+        else:
+            process = await asyncio.create_subprocess_exec(
+                *args,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+                # Give Process.kill() an exact group containing only this tree.
+                start_new_session=True,
+            )
         return self.Process(process)
 
 
