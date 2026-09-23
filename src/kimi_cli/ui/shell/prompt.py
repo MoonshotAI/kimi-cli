@@ -884,6 +884,7 @@ _RUNNING_REFRESH_INTERVAL = 0.1
 _GIT_BRANCH_TTL = 5.0
 _GIT_STATUS_TTL = 15.0
 _TIP_ROTATE_INTERVAL = 30.0
+_CONTEXT_USAGE_WARNING_THRESHOLD = 0.80
 _MAX_CWD_COLS = 30
 _MAX_BRANCH_COLS = 22
 
@@ -2204,7 +2205,7 @@ class CustomPromptSession:
         if tip_text and _display_width(tip_text) <= remaining:
             fragments.append((tc.tip, tip_text))
 
-        # ── line 2: toast (left) + context (right) — always rendered ──────
+        # ── line 2: toast (left) + optional warning/status text (right) ──────
         fragments.append(("", "\n"))
 
         right_text = self._render_right_span(status)
@@ -2224,8 +2225,9 @@ class CustomPromptSession:
         else:
             left_width = 0
 
-        fragments.append(("", " " * max(0, columns - left_width - right_width)))
-        fragments.append(("", right_text))
+        if right_text:
+            fragments.append(("", " " * max(0, columns - left_width - right_width)))
+            fragments.append(("", right_text))
 
         return FormattedText(fragments)
 
@@ -2250,10 +2252,12 @@ class CustomPromptSession:
     @staticmethod
     def _render_right_span(status: StatusSnapshot) -> str:
         current_toast = _current_toast("right")
-        if current_toast is None:
-            return format_context_status(
-                status.context_usage,
-                status.context_tokens,
-                status.max_context_tokens,
-            )
-        return current_toast.message
+        if current_toast is not None:
+            return current_toast.message
+        if status.context_usage < _CONTEXT_USAGE_WARNING_THRESHOLD:
+            return ""
+        return format_context_status(
+            status.context_usage,
+            status.context_tokens,
+            status.max_context_tokens,
+        )
