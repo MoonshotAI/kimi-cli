@@ -145,7 +145,12 @@ def git_index_mtime(root: Path) -> float | None:
         return None
 
 
-def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[str]:
+def _parse_ls_files_output(
+    stdout: str,
+    *,
+    filter_ignored: bool = True,
+    allowed_ignored_names: frozenset[str] = frozenset(),
+) -> list[str]:
     """Parse NUL-delimited ``git ls-files -z`` output into paths with synthesised dirs.
 
     When *filter_ignored* is *True*, paths whose segments match
@@ -168,7 +173,7 @@ def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[
                 if prefix in ignored_prefixes:
                     skip = True
                     break
-                if is_ignored(part):
+                if is_ignored(part) and part not in allowed_ignored_names:
                     ignored_prefixes.add(prefix)
                     skip = True
                     break
@@ -244,7 +249,13 @@ def list_files_git(
         return None
 
     deleted = _git_deleted_files(root, scope)
-    paths = _parse_ls_files_output(result.stdout)
+    # ``vendor`` often contains checked-in project sources (for example Go
+    # dependencies), so honor those explicit index entries. Other generated
+    # directories remain filtered, as does the untracked pass below.
+    paths = _parse_ls_files_output(
+        result.stdout,
+        allowed_ignored_names=frozenset(("vendor",)),
+    )
     if deleted:
         paths = [p for p in paths if p.endswith("/") or p not in deleted]
 
