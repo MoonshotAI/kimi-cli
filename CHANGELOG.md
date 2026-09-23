@@ -27,6 +27,7 @@ Only write entries that are worth mentioning to users.
 ## 1.50.0 (2026-09-02)
 
 - Kosong: Stop sending an empty `anthropic-beta` header when no beta features are declared — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject
+- Core: Point the unsupported-capability error at the fix, naming the `capabilities` setting to declare on the model entry instead of only reporting which capability was missing
 
 ## 1.49.0 (2026-07-16)
 

@@ -15,7 +15,7 @@ def test_soul_exceptions(llm: LLM):
         raise LLMNotSupported(llm, ["image_in"])
     except LLMNotSupported as e:
         assert str(e) == snapshot(
-            "LLM model 'mock' does not support required capability: image_in."
+            "LLM model 'mock' does not support required capability: image_in. If the model does support this, declare `capabilities = [\"image_in\"]` on its entry in your config file; input capabilities are only taken from that setting for manually configured models."
         )
 
     try:

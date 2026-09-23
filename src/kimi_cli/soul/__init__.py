@@ -34,9 +34,13 @@ class LLMNotSupported(Exception):
         self.llm = llm
         self.capabilities = capabilities
         capabilities_str = "capability" if len(capabilities) == 1 else "capabilities"
+        declared = ", ".join(f'"{c}"' for c in sorted(capabilities))
         super().__init__(
             f"LLM model '{llm.model_name}' does not support required {capabilities_str}: "
-            f"{', '.join(capabilities)}."
+            f"{', '.join(capabilities)}. "
+            f"If the model does support this, declare `capabilities = [{declared}]` "
+            "on its entry in your config file; input capabilities are only taken from "
+            "that setting for manually configured models."
         )
 
 

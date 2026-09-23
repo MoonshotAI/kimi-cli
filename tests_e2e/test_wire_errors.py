@@ -164,7 +164,7 @@ def test_llm_not_supported(tmp_path) -> None:
             {
                 "error": {
                     "code": -32002,
-                    "message": "LLM model 'scripted_echo' does not support required capability: image_in.",
+                    "message": "LLM model 'scripted_echo' does not support required capability: image_in. If the model does support this, declare `capabilities = [\"image_in\"]` on its entry in your config file; input capabilities are only taken from that setting for manually configured models.",
                     "data": None,
                 }
             }
