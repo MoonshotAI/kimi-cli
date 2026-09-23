@@ -74,26 +74,35 @@ class ACPServer:
         terminal_args = args + ["login"]
 
         # Build and cache auth methods for reuse in AUTH_REQUIRED errors
-        self._auth_methods = [
-            acp.schema.AuthMethod(
-                id="login",
-                name="Login with Kimi account",
-                description=(
-                    "Run `kimi login` command in the terminal, "
-                    "then follow the instructions to finish login."
+        # Skip login method if user already has API-key based auth configured
+        config = load_config()
+        has_api_key = any(
+            provider.api_key and provider.api_key.get_secret_value()
+            for provider in config.providers.values()
+        )
+        if has_api_key or self._check_token_usable() is None:
+            self._auth_methods = []
+        else:
+            self._auth_methods = [
+                acp.schema.AuthMethod(
+                    id="login",
+                    name="Login with Kimi account",
+                    description=(
+                        "Run `kimi login` command in the terminal, "
+                        "then follow the instructions to finish login."
+                    ),
+                    # Store auth data in field_meta for building AUTH_REQUIRED error
+                    field_meta={
+                        "terminal-auth": {
+                            "command": command,
+                            "args": terminal_args,
+                            "label": "Kimi Code Login",
+                            "env": {},
+                            "type": "terminal",
+                        }
+                    },
                 ),
-                # Store auth data in field_meta for building AUTH_REQUIRED error
-                field_meta={
-                    "terminal-auth": {
-                        "command": command,
-                        "args": terminal_args,
-                        "label": "Kimi Code Login",
-                        "env": {},
-                        "type": "terminal",
-                    }
-                },
-            ),
-        ]
+            ]
 
         return acp.InitializeResponse(
             protocol_version=self.negotiated_version.protocol_version,
@@ -129,6 +138,15 @@ class ACPServer:
         """Check if Kimi Code authentication is complete. Raise AUTH_REQUIRED if not."""
         reason = self._check_token_usable()
         if reason:
+            # Allow API-key based authentication as an alternative to OAuth
+            config = load_config()
+            has_api_key = any(
+                provider.api_key and provider.api_key.get_secret_value()
+                for provider in config.providers.values()
+            )
+            if has_api_key:
+                return
+
             auth_methods_data: list[dict[str, Any]] = []
             for m in self._auth_methods:
                 if m.field_meta and "terminal-auth" in m.field_meta:
