@@ -133,7 +133,6 @@ async def test_kimi_message_conversion():
                                     "type": "image_url",
                                     "image_url": {
                                         "url": "https://example.com/image.png",
-                                        "id": None,
                                     },
                                 },
                             ],
@@ -204,7 +203,6 @@ async def test_kimi_message_conversion():
                                     "type": "image_url",
                                     "image_url": {
                                         "url": "https://example.com/image.png",
-                                        "id": None,
                                     },
                                 },
                             ],
