@@ -96,6 +96,75 @@ def test_create_openai_client_does_not_inject_max_retries(monkeypatch: pytest.Mo
     assert "max_retries" not in captured
 
 
+def test_create_openai_client_injects_custom_http_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When no http_client is provided, create_openai_client should inject a
+    custom httpx.AsyncClient with extended timeout and keepalive settings
+    to prevent connection drops during long TTFT on large context requests.
+    """
+    captured_openai: dict[str, Any] = {}
+    captured_httpx: dict[str, Any] = {}
+
+    class FakeAsyncOpenAI:
+        def __init__(self, **kwargs: Any) -> None:
+            captured_openai.update(kwargs)
+
+    original_async_client = httpx.AsyncClient
+
+    def capture_async_client(**kwargs: Any) -> httpx.AsyncClient:
+        captured_httpx.update(kwargs)
+        return original_async_client(**kwargs)
+
+    monkeypatch.setattr(openai_common, "AsyncOpenAI", FakeAsyncOpenAI)
+    monkeypatch.setattr(httpx, "AsyncClient", capture_async_client)
+
+    openai_common.create_openai_client(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        client_kwargs={},
+    )
+
+    assert "http_client" in captured_openai
+    assert isinstance(captured_openai["http_client"], original_async_client)
+
+    # Verify timeout configuration (preserve OpenAI SDK default 600s)
+    timeout = captured_httpx["timeout"]
+    assert timeout.connect == 10.0
+    assert timeout.read == 600.0
+    assert timeout.write == 600.0
+    assert timeout.pool == 600.0
+
+    # Verify keepalive limits
+    limits = captured_httpx["limits"]
+    assert limits.max_keepalive_connections == 20
+    assert limits.max_connections == 100
+    assert limits.keepalive_expiry == 60.0
+
+    # Verify follow_redirects is preserved
+    assert captured_httpx["follow_redirects"] is True
+
+
+def test_create_openai_client_respects_existing_http_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When a custom http_client is already provided, create_openai_client
+    should not override it.
+    """
+    captured: dict[str, Any] = {}
+
+    class FakeAsyncOpenAI:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(openai_common, "AsyncOpenAI", FakeAsyncOpenAI)
+
+    existing_client = httpx.AsyncClient()
+    openai_common.create_openai_client(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        client_kwargs={"http_client": existing_client},
+    )
+
+    assert captured["http_client"] is existing_client
+
+
 @pytest.mark.asyncio
 async def test_retry_recovery_does_not_close_shared_http_client() -> None:
     http_client = httpx.AsyncClient()
