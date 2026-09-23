@@ -83,6 +83,30 @@ def test_load_config_sets_source_file(tmp_path):
     assert not config.is_from_default_location
 
 
+def test_load_config_accepts_utf8_bom_toml(tmp_path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        """\ufeffdefault_model = "kimi-k2"
+
+[models.kimi-k2]
+provider = "test"
+model = "kimi-k2"
+max_context_size = 100000
+
+[providers.test]
+type = "_echo"
+base_url = "http://localhost"
+api_key = "test"
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_file)
+
+    assert config.default_model == "kimi-k2"
+    assert config.source_file == config_file.resolve()
+
+
 def test_load_config_text_has_no_source_file():
     config = load_config_from_string('{"default_model": ""}')
 
