@@ -190,6 +190,21 @@ async def test_kaospath_roundtrip(bind_current_kaos: SSHKaos, remote_base: str):
     assert str(KaosPath.cwd()) == remote_base
 
 
+async def test_writetext_returns_char_count_not_byte_count(
+    ssh_kaos: SSHKaos, remote_base: str
+):
+    """writetext() must return character count, not byte count, for CJK text."""
+    file_path = os.path.join(remote_base, "cjk.txt")
+    cjk_text = "你好世界"
+    written = await ssh_kaos.writetext(file_path, cjk_text)
+    assert written == len(cjk_text), (
+        f"Expected {len(cjk_text)} characters, got {written}"
+    )
+
+    read_back = await ssh_kaos.readtext(file_path)
+    assert read_back == cjk_text
+
+
 async def test_iterdir_lists_child_entries(ssh_kaos: SSHKaos, remote_base: str):
     await ssh_kaos.writetext(os.path.join(remote_base, "file1.txt"), "1")
     await ssh_kaos.writetext(os.path.join(remote_base, "file2.log"), "2")
