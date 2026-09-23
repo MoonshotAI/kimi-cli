@@ -41,6 +41,9 @@ def is_clipboard_available() -> bool:
         return False
 
 
+def copy_text_to_clipboard(text: str) -> None:
+    """Copy plain text to the system clipboard."""
+    pyperclip.copy(text)
 def is_media_clipboard_available() -> bool:
     """Check if the media clipboard (xclip/wl-paste) is available.
 
