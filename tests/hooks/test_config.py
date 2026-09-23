@@ -23,7 +23,7 @@ def test_invalid_event():
 
 
 def test_all_event_types_defined():
-    assert len(HOOK_EVENT_TYPES) == 13
+    assert len(HOOK_EVENT_TYPES) == 14
 
 
 def test_config_with_hooks():
