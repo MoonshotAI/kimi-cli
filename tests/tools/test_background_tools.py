@@ -23,7 +23,7 @@ def _write_task(runtime, task_id: str, *, status: TaskStatus, output: str = ""):
         timeout_s=60,
     )
     store.create_task(spec)
-    store.output_path(task_id).write_text(output, encoding="utf-8")
+    store.output_path(task_id).write_text(output, encoding="utf-8", newline="")
     runtime_state = TaskRuntime(status=status, updated_at=time.time())
     if status in {"completed", "failed", "killed", "lost"}:
         runtime_state.finished_at = time.time()
@@ -57,7 +57,7 @@ def _write_agent_task(
     )
     store.create_task(spec)
     if task_output:
-        store.output_path(task_id).write_text(task_output, encoding="utf-8")
+        store.output_path(task_id).write_text(task_output, encoding="utf-8", newline="")
     runtime_state = TaskRuntime(status=status, updated_at=time.time())
     if status in {"completed", "failed", "killed", "lost"}:
         runtime_state.finished_at = time.time()
@@ -66,7 +66,7 @@ def _write_agent_task(
     # Write subagent output (the live file)
     subagent_dir = runtime.subagent_store.instance_dir(agent_id, create=True)
     subagent_output_path = subagent_dir / "output"
-    subagent_output_path.write_text(subagent_output, encoding="utf-8")
+    subagent_output_path.write_text(subagent_output, encoding="utf-8", newline="")
     return spec
 
 
