@@ -130,6 +130,28 @@ def kimi(
             ),
         ),
     ] = None,
+    use_worktree: Annotated[
+        bool,
+        typer.Option(
+            "--worktree",
+            "-W",
+            help="Create a new git worktree and run the session inside it. Default: no.",
+        ),
+    ] = False,
+    worktree_name: Annotated[
+        str | None,
+        typer.Option(
+            "--worktree-name",
+            help="Name for the worktree directory (default: auto-generated).",
+        ),
+    ] = None,
+    worktree_branch: Annotated[
+        str | None,
+        typer.Option(
+            "--worktree-branch",
+            help="Branch to check out in the worktree (default: detached HEAD at current HEAD).",
+        ),
+    ] = None,
     session_id: Annotated[
         str | None,
         typer.Option(
@@ -388,6 +410,7 @@ def kimi(
     from kimi_cli.session import Session
     from kimi_cli.ui.shell.startup import ShellStartupProgress
     from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
+    from kimi_cli.worktree import WorktreeError, create_worktree, find_git_root
 
     from .mcp import get_global_mcp_config_file
 
@@ -449,6 +472,14 @@ def kimi(
         {
             "--config": config_string is not None,
             "--config-file": config_file is not None,
+        },
+        {
+            "--worktree": use_worktree,
+            "--continue": continue_,
+        },
+        {
+            "--worktree": use_worktree,
+            "--session": session_id is not None or _picker_mode,
         },
     ]
     for option_set in conflict_option_sets:
@@ -541,6 +572,14 @@ def kimi(
     # exception handler can clean it up even when _run() fails before returning.
     _latest_created_session: Session | None = None
 
+    # Tracks whether we have already created a worktree in this invocation,
+    # so that Reload re-entries do not create nested worktrees.
+    _worktree_created: bool = False
+
+    # Tracks the parent repo path across Reload re-entries so that sessions
+    # created after Reload still get worktree state persisted.
+    _parent_repo_path: str | None = None
+
     async def _run(session_id: str | None, prefill_text: str | None = None) -> tuple[Session, int]:
         """
         Create/load session and run the CLI instance.
@@ -551,6 +590,28 @@ def kimi(
         startup_progress = ShellStartupProgress(enabled=ui == "shell")
         try:
             startup_progress.update("Preparing session...")
+
+            nonlocal work_dir
+            nonlocal _worktree_created
+            nonlocal _parent_repo_path
+
+            if use_worktree and not _worktree_created:
+                git_root = await find_git_root(work_dir)
+                if git_root is None:
+                    raise typer.BadParameter(
+                        "--worktree requires the working directory to be inside a git repository",
+                        param_hint="--worktree",
+                    )
+                _parent_repo_path = str(git_root)
+                try:
+                    work_dir = await create_worktree(
+                        git_root,
+                        name=worktree_name,
+                        branch=worktree_branch,
+                    )
+                except WorktreeError as exc:
+                    raise typer.BadParameter(str(exc), param_hint="--worktree") from exc
+                _worktree_created = True
 
             # Track if we're resuming an existing session (vs creating new)
             resumed = False
@@ -581,6 +642,12 @@ def kimi(
             else:
                 session = await Session.create(work_dir)
                 logger.info("Created new session: {session_id}", session_id=session.id)
+
+            # Persist worktree association for new worktree sessions
+            if use_worktree and _parent_repo_path is not None:
+                session.state.worktree_path = str(work_dir)
+                session.state.parent_repo_path = _parent_repo_path
+                session.save_state()
 
             nonlocal _latest_created_session
             _latest_created_session = session
@@ -714,13 +781,13 @@ def kimi(
         finally:
             startup_progress.stop()
 
-    async def _delete_empty_session(session: Session) -> None:
+    async def _delete_empty_session(session: Session, *, remove_worktree: bool = True) -> None:
         """Delete an empty session directory and clear last_session_id if it pointed to it."""
         logger.info(
             "Session {session_id} has empty context, removing it",
             session_id=session.id,
         )
-        await session.delete()
+        await session.delete(remove_worktree=remove_worktree)
         meta = load_metadata()
         wdm = meta.get_work_dir_meta(session.work_dir)
         if wdm is not None and wdm.last_session_id == session.id:
@@ -767,7 +834,7 @@ def kimi(
                     # Clean up old empty session when switching to a different session
                     old = e.source_session
                     if old is not None and old.id != e.session_id and old.is_empty():
-                        await _delete_empty_session(old)
+                        await _delete_empty_session(old, remove_worktree=False)
                         last_session = None
                     else:
                         last_session = e.source_session
