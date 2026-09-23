@@ -122,16 +122,7 @@ async def test_openai_legacy_message_conversion():
                         },
                         {
                             "role": "tool",
-                            "content": [
-                                {"type": "text", "text": "5"},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": "https://example.com/image.png",
-                                        "id": None,
-                                    },
-                                },
-                            ],
+                            "content": "5",
                             "tool_call_id": "call_abc123",
                         },
                     ],
@@ -182,26 +173,14 @@ async def test_openai_legacy_message_conversion():
                         },
                         {
                             "role": "tool",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "<system-reminder>This is a system reminder"
-                                    "</system-reminder>",
-                                },
-                                {"type": "text", "text": "5"},
-                            ],
+                            "content": "<system-reminder>This is a system reminder"
+                            "</system-reminder>\n5",
                             "tool_call_id": "call_add",
                         },
                         {
                             "role": "tool",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "<system-reminder>This is a system reminder"
-                                    "</system-reminder>",
-                                },
-                                {"type": "text", "text": "20"},
-                            ],
+                            "content": "<system-reminder>This is a system reminder"
+                            "</system-reminder>\n20",
                             "tool_call_id": "call_mul",
                         },
                     ],
