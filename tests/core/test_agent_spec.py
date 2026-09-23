@@ -42,8 +42,7 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.web:SearchWeb",
             "kimi_cli.tools.web:FetchURL",
             "kimi_cli.tools.plan:ExitPlanMode",
-            "kimi_cli.tools.plan.enter:EnterPlanMode",
-        ]
+            "kimi_cli.tools.plan.enter:EnterPlanMode", "kimi_cli.tools.goal:UpdateGoal"]
     )
     subagents = {
         name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
@@ -113,8 +112,7 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.web:SearchWeb",
             "kimi_cli.tools.web:FetchURL",
             "kimi_cli.tools.plan:ExitPlanMode",
-            "kimi_cli.tools.plan.enter:EnterPlanMode",
-        ]
+            "kimi_cli.tools.plan.enter:EnterPlanMode", "kimi_cli.tools.goal:UpdateGoal"]
     )
     sub_subagents = {
         name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
@@ -196,8 +194,7 @@ You are meant to be a fast agent. Complete the search request efficiently and re
             "kimi_cli.tools.web:SearchWeb",
             "kimi_cli.tools.web:FetchURL",
             "kimi_cli.tools.plan:ExitPlanMode",
-            "kimi_cli.tools.plan.enter:EnterPlanMode",
-        ]
+            "kimi_cli.tools.plan.enter:EnterPlanMode", "kimi_cli.tools.goal:UpdateGoal"]
     )
     sub_subagents = {
         name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
@@ -263,8 +260,7 @@ Before designing your implementation plan, consider whether you fully understand
             "kimi_cli.tools.web:SearchWeb",
             "kimi_cli.tools.web:FetchURL",
             "kimi_cli.tools.plan:ExitPlanMode",
-            "kimi_cli.tools.plan.enter:EnterPlanMode",
-        ]
+            "kimi_cli.tools.plan.enter:EnterPlanMode", "kimi_cli.tools.goal:UpdateGoal"]
     )
     sub_subagents = {
         name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
@@ -359,8 +355,7 @@ agent:
                 "kimi_cli.tools.web:SearchWeb",
                 "kimi_cli.tools.web:FetchURL",
                 "kimi_cli.tools.plan:ExitPlanMode",
-                "kimi_cli.tools.plan.enter:EnterPlanMode",
-            ]
+                "kimi_cli.tools.plan.enter:EnterPlanMode", "kimi_cli.tools.goal:UpdateGoal"]
         )
         assert spec.exclude_tools == snapshot(
             ["kimi_cli.tools.web:SearchWeb", "kimi_cli.tools.web:FetchURL"]
