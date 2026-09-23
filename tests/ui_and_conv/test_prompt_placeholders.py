@@ -1,14 +1,24 @@
 from __future__ import annotations
 
+import pytest
 from PIL import Image
 
 from kimi_cli.ui.shell import placeholders
 from kimi_cli.ui.shell.placeholders import (
     AttachmentCache,
+    ImagePathResolutionError,
     PromptPlaceholderManager,
     should_placeholderize_pasted_text,
 )
 from kimi_cli.wire.types import ImageURLPart, TextPart
+
+
+def _write_png(path) -> None:
+    Image.new("RGB", (4, 4), color=(10, 20, 30)).save(path, format="PNG")
+
+
+def _image_parts(content):
+    return [part for part in content if isinstance(part, ImageURLPart)]
 
 
 def test_placeholder_manager_serializes_text_tokens_for_history(tmp_path) -> None:
@@ -137,6 +147,92 @@ def test_placeholder_manager_leaves_unknown_image_placeholder_literal() -> None:
 
     assert resolved.resolved_text == "[image:missing.png,10x10]"
     assert resolved.content == [TextPart(text="[image:missing.png,10x10]")]
+
+
+def test_placeholder_manager_attaches_absolute_image_path(tmp_path) -> None:
+    image_path = tmp_path / "Screenshot 2026-05-07 at 5.47.51 PM.png"
+    _write_png(image_path)
+    manager = PromptPlaceholderManager(model_capabilities={"image_in"})
+
+    resolved = manager.resolve_command(f"look {image_path} please")
+
+    assert resolved.resolved_text == f"look {image_path} please"
+    image_parts = _image_parts(resolved.content)
+    assert len(image_parts) == 1
+    assert image_parts[0].image_url.url.startswith("data:image/png;base64,")
+
+
+def test_placeholder_manager_attaches_parenthesized_image_path(tmp_path) -> None:
+    image_path = tmp_path / "thumbnail.png"
+    _write_png(image_path)
+    manager = PromptPlaceholderManager(model_capabilities={"image_in"})
+
+    resolved = manager.resolve_command(f"look ({image_path})")
+
+    assert len(_image_parts(resolved.content)) == 1
+    assert resolved.content[0] == TextPart(text="look (")
+    assert resolved.content[-1] == TextPart(text=")")
+
+
+def test_placeholder_manager_attaches_markdown_relative_image_path(tmp_path, monkeypatch) -> None:
+    image_path = tmp_path / "thumbnail.png"
+    _write_png(image_path)
+    monkeypatch.chdir(tmp_path)
+    manager = PromptPlaceholderManager(model_capabilities={"image_in"})
+
+    resolved = manager.resolve_command("look ![alt](./thumbnail.png)")
+
+    assert len(_image_parts(resolved.content)) == 1
+    assert resolved.content[0] == TextPart(text="look ![alt](")
+    assert resolved.content[-1] == TextPart(text=")")
+
+
+def test_placeholder_manager_keeps_duplicate_image_path_as_text(tmp_path) -> None:
+    image_path = tmp_path / "thumbnail.png"
+    _write_png(image_path)
+    manager = PromptPlaceholderManager(model_capabilities={"image_in"})
+
+    resolved = manager.resolve_command(f"compare {image_path} with {image_path}")
+
+    assert len(_image_parts(resolved.content)) == 1
+    assert resolved.content[-1] == TextPart(text=str(image_path))
+
+
+def test_placeholder_manager_attaches_file_url_image_path(tmp_path) -> None:
+    image_path = tmp_path / "thumbnail.png"
+    _write_png(image_path)
+    manager = PromptPlaceholderManager(model_capabilities={"image_in"})
+
+    resolved = manager.resolve_command(f"inspect {image_path.as_uri()}")
+
+    assert len(_image_parts(resolved.content)) == 1
+
+
+def test_placeholder_manager_skips_image_paths_without_image_capability(tmp_path) -> None:
+    image_path = tmp_path / "thumbnail.png"
+    _write_png(image_path)
+    command = f"look {image_path}"
+    manager = PromptPlaceholderManager(model_capabilities=set())
+
+    resolved = manager.resolve_command(command)
+
+    assert resolved.content == [TextPart(text=command)]
+
+
+def test_placeholder_manager_reports_missing_explicit_image_path(tmp_path) -> None:
+    image_path = tmp_path / "TemporaryItems" / "NSIRD_screencaptureui_x" / "Screenshot.png"
+    manager = PromptPlaceholderManager(model_capabilities={"image_in"})
+
+    with pytest.raises(ImagePathResolutionError, match="no longer accessible"):
+        manager.resolve_command(f"look {image_path}")
+
+
+def test_placeholder_manager_leaves_simple_missing_image_filename_as_text() -> None:
+    manager = PromptPlaceholderManager(model_capabilities={"image_in"})
+
+    resolved = manager.resolve_command("create missing.png")
+
+    assert resolved.content == [TextPart(text="create missing.png")]
 
 
 def test_placeholder_manager_sanitizes_surrogates_in_pasted_text() -> None:

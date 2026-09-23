@@ -1208,7 +1208,9 @@ class CustomPromptSession:
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
         self._thinking = thinking
-        self._placeholder_manager = PromptPlaceholderManager()
+        self._placeholder_manager = PromptPlaceholderManager(
+            model_capabilities=set(self._model_capabilities)
+        )
         # Keep the old attribute for test compatibility and for any external imports.
         self._attachment_cache = self._placeholder_manager.attachment_cache
         self._last_tip_rotate_time: float = time.monotonic()
@@ -1891,7 +1893,10 @@ class CustomPromptSession:
         manager = getattr(self, "_placeholder_manager", None)
         if manager is None:
             attachment_cache = getattr(self, "_attachment_cache", None)
-            manager = PromptPlaceholderManager(attachment_cache=attachment_cache)
+            manager = PromptPlaceholderManager(
+                attachment_cache=attachment_cache,
+                model_capabilities=set(self._model_capabilities),
+            )
             self._placeholder_manager = manager
             self._attachment_cache = manager.attachment_cache
         return manager
@@ -2059,13 +2064,19 @@ class CustomPromptSession:
         self._last_submission_was_running = was_running
         if append_history is None:
             append_history = not was_running
+        user_input = self._build_user_input(command)
         if append_history:
             self._append_history_entry(command)
         self._tip_rotation_index += 1
-        return self._build_user_input(command)
+        return user_input
 
     def _build_user_input(self, command: str) -> UserInput:
-        resolved = self._get_placeholder_manager().resolve_command(command)
+        manager = self._get_placeholder_manager()
+        manager.update_model_capabilities(set(self._model_capabilities))
+        resolved = manager.resolve_command(
+            command,
+            attach_literal_images=self._mode == PromptMode.AGENT,
+        )
 
         return UserInput(
             mode=self._mode,
