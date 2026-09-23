@@ -21,6 +21,8 @@ Possible reasons for an invalid API key:
 
 If you're using the Kimi Code platform, you can check your current quota and membership status with the `/usage` command. If the quota is exhausted or membership expired, you need to renew or upgrade at [Kimi Code](https://kimi.com/coding).
 
+Request counts shown for a membership time window are rough estimates derived from token consumption, not a fixed per-request allowance. The actual number of turns varies with the task: long context, large files, images, tool output, subagents, and repeated edits all consume more tokens, so complex engineering work can reach the limit much faster than short Q&A. When troubleshooting quota usage, treat `/usage` as the source of truth for remaining quota and check the current session's context usage to decide whether to compact context or start a new session.
+
 ## Interaction issues
 
 ### `cd` command doesn't work in shell mode
