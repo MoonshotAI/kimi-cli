@@ -322,7 +322,11 @@ class ACPServer:
         )
 
     async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
-        assert mode_id == "default", "Only default mode is supported"
+        if session_id not in self.sessions:
+            raise acp.RequestError.invalid_params({"session_id": "Session not found"})
+
+        if mode_id != "default":
+            raise acp.RequestError.invalid_params({"mode_id": "Only default mode is supported"})
 
     async def set_session_model(self, model_id: str, session_id: str, **kwargs: Any) -> None:
         logger.info(
