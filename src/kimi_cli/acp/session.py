@@ -16,6 +16,7 @@ from kimi_cli.acp.convert import (
 )
 from kimi_cli.acp.types import ACPContentBlock
 from kimi_cli.app import KimiCLI
+from kimi_cli.provider_errors import format_chat_provider_error
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
@@ -225,11 +226,25 @@ class ACPSession:
             if e.status_code == 401 and self._is_oauth_session():
                 logger.warning("Authentication failed (401), prompting re-login")
                 raise acp.RequestError.auth_required() from e
-            logger.exception("LLM API status error:")
-            raise acp.RequestError.internal_error({"error": str(e)}) from e
+            presentation = format_chat_provider_error(e)
+            logger.warning(
+                "LLM API status error ({kind}): {error}",
+                kind=presentation.kind,
+                error=e,
+            )
+            raise acp.RequestError.internal_error(
+                {"error": presentation.as_plain_text(include_server_detail=True)}
+            ) from e
         except ChatProviderError as e:
-            logger.exception("LLM provider error:")
-            raise acp.RequestError.internal_error({"error": str(e)}) from e
+            presentation = format_chat_provider_error(e)
+            logger.warning(
+                "LLM provider error ({kind}): {error}",
+                kind=presentation.kind,
+                error=e,
+            )
+            raise acp.RequestError.internal_error(
+                {"error": presentation.as_plain_text(include_server_detail=True)}
+            ) from e
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
             return acp.PromptResponse(stop_reason="max_turn_requests")

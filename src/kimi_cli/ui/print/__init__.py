@@ -19,6 +19,7 @@ from rich import print
 
 from kimi_cli.background.models import is_terminal_status
 from kimi_cli.cli import ExitCode, InputFormat, OutputFormat
+from kimi_cli.provider_errors import format_chat_provider_error
 from kimi_cli.soul import (
     LLMNotSet,
     LLMNotSupported,
@@ -416,8 +417,13 @@ class Print:
             print(str(e))
             return ExitCode.FAILURE
         except ChatProviderError as e:
-            logger.exception("LLM provider error:")
-            print(str(e))
+            presentation = format_chat_provider_error(e)
+            logger.warning(
+                "LLM provider error ({kind}): {error}",
+                kind=presentation.kind,
+                error=e,
+            )
+            print(presentation.as_plain_text(include_server_detail=True))
             return self._classify_provider_error(e)
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
