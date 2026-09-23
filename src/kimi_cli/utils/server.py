@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import socket
+import sys
 import textwrap
 
 
@@ -88,6 +89,11 @@ def get_network_addresses() -> list[str]:
 
 def print_banner(lines: list[str]) -> None:
     """Print a boxed banner with tag conventions (<center>, <nowrap>, <hr>)."""
+
+    def print_safe(text: str) -> None:
+        encoding = sys.stdout.encoding or "utf-8"
+        print(text.encode(encoding, errors="replace").decode(encoding))
+
     processed: list[str] = []
     for line in lines:
         if line == "<hr>":
@@ -106,16 +112,16 @@ def print_banner(lines: list[str]) -> None:
     width = max(60, *(len(line) for line in content_lines))
     top = "+" + "=" * (width + 2) + "+"
 
-    print(top)
+    print_safe(top)
     for line in processed:
         if line == "<hr>":
-            print("|" + "-" * (width + 2) + "|")
+            print_safe("|" + "-" * (width + 2) + "|")
         elif line.startswith("<center>"):
             content = line.removeprefix("<center>")
-            print(f"| {content.center(width)} |")
+            print_safe(f"| {content.center(width)} |")
         elif line.startswith("<nowrap>"):
             content = line.removeprefix("<nowrap>")
-            print(f"| {content.ljust(width)} |")
+            print_safe(f"| {content.ljust(width)} |")
         else:
-            print(f"| {line.ljust(width)} |")
-    print(top)
+            print_safe(f"| {line.ljust(width)} |")
+    print_safe(top)
