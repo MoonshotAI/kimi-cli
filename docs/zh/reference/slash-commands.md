@@ -276,6 +276,22 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 
 开启 Plan 模式后，提示符变为 `📋`，底部状态栏显示蓝色的 `plan` 标识。
 
+### `/rules`
+
+管理开发规则（Rules）。Rules 是为项目定义的开发指南和编码标准，支持三层：内置（builtin）、用户级（`~/.config/agents/rules/`）和项目级（`.agents/rules/`）。激活的规则会自动注入到系统提示词中。
+
+用法：
+
+- `/rules list [level] [--all]`：列出所有规则及其状态
+  - `level`：可选过滤器，指定 `builtin`、`user` 或 `project`
+  - `--all`：同时显示已禁用的规则
+- `/rules show <rule-id>`：查看指定规则的完整内容
+- `/rules on <rule-id>`：启用指定规则
+- `/rules off <rule-id>`：禁用指定规则
+- `/rules reset [--hard]`：重置规则状态为默认值，`--hard` 同时删除状态文件
+
+规则状态按项目持久化存储在 `.agents/rules.state.toml` 中。
+
 ### `/task`
 
 打开交互式任务浏览器，查看、监控和管理后台任务。
