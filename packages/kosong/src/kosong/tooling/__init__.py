@@ -27,6 +27,9 @@ class Tool(BaseModel):
     parameters: ParametersType
     """The parameters of the tool, in JSON Schema format."""
 
+    strict: bool = False
+    """Whether to enforce strict parameter validation when calling the tool via API."""
+
     @model_validator(mode="after")
     def _validate_parameters(self) -> Self:
         jsonschema.validate(self.parameters, jsonschema.Draft202012Validator.META_SCHEMA)
@@ -243,6 +246,8 @@ class CallableTool2[Params: BaseModel](ABC):
     """The description of the tool."""
     params: type[Params]
     """The Pydantic model type of the tool parameters."""
+    strict: bool = False
+    """Whether to enforce strict parameter validation when calling the tool via API."""
 
     def __init__(
         self,
@@ -276,12 +281,17 @@ class CallableTool2[Params: BaseModel](ABC):
         if not isinstance(self.params, type) or not issubclass(self.params, BaseModel):  # type: ignore[reportUnnecessaryIsInstance]
             raise ValueError("Tool params must be a subclass of pydantic.BaseModel")
 
+        strict = getattr(cls, "strict", False)
+        if not isinstance(strict, bool):  # type: ignore[reportUnnecessaryIsInstance]
+            strict = False
+
         self._base = Tool(
             name=self.name,
             description=self.description,
             parameters=deref_json_schema(
                 self.params.model_json_schema(schema_generator=_GenerateJsonSchemaNoTitles)
             ),
+            strict=strict,
         )
 
     @property

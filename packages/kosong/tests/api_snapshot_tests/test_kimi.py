@@ -163,6 +163,7 @@ async def test_kimi_message_conversion():
                                     },
                                     "required": ["a", "b"],
                                 },
+                                "strict": False,
                             },
                         },
                         {
@@ -178,6 +179,7 @@ async def test_kimi_message_conversion():
                                     },
                                     "required": ["a", "b"],
                                 },
+                                "strict": False,
                             },
                         },
                     ],
@@ -295,6 +297,7 @@ async def test_kimi_message_conversion():
                                     },
                                     "required": ["a", "b"],
                                 },
+                                "strict": False,
                             },
                         },
                         {
@@ -310,6 +313,7 @@ async def test_kimi_message_conversion():
                                     },
                                     "required": ["a", "b"],
                                 },
+                                "strict": False,
                             },
                         },
                     ],
