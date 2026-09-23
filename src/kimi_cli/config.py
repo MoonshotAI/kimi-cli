@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 import tomlkit
 from pydantic import (
@@ -51,6 +51,11 @@ class LLMProvider(BaseModel):
     when unset. Use an empty string to disable reasoning round-tripping."""
     oauth: OAuthRef | None = None
     """OAuth credential reference (do not store tokens here)."""
+    extra_generation_kwargs: dict[str, Any] | None = None
+    """Extra generation kwargs to forward to the chat provider's generate() call.
+    For ``openai_legacy`` type, supports max_tokens, temperature, top_p,
+    presence_penalty, frequency_penalty, stop, and vLLM-specific
+    parameter extra_body (a dict)."""
 
     @field_serializer("api_key", when_used="json")
     def dump_secret(self, v: SecretStr):

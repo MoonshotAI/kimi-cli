@@ -67,6 +67,7 @@ class OpenAILegacy:
         frequency_penalty: float | None
         stop: str | list[str] | None
         prompt_cache_key: str | None
+        extra_body: dict[str, Any] | None
 
     def __init__(
         self,
@@ -142,7 +143,10 @@ class OpenAILegacy:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                tools=(tool_to_openai(tool) for tool in tools),
+                tools=(
+                    omit if not tools
+                    else (tool_to_openai(tool) for tool in tools)
+                ),
                 stream=self.stream,
                 stream_options={"include_usage": True} if self.stream else omit,
                 reasoning_effort=reasoning_effort,
