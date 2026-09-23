@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import socket
+import sys
 import textwrap
 
 
@@ -86,8 +87,28 @@ def get_network_addresses() -> list[str]:
     return addresses
 
 
+def _encodable(text: str) -> str:
+    """Drop characters stdout cannot encode, so printing never raises.
+
+    The banner uses characters like U+279C that a legacy console codec (GBK on
+    Chinese Windows, for example) cannot represent. Printing those raises
+    UnicodeEncodeError, and since the banner is printed before the server binds
+    its port, an unhandled error there takes the whole process down.
+    """
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        text.encode(encoding)
+    except UnicodeEncodeError:
+        return text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+    except LookupError:
+        return text
+    return text
+
+
 def print_banner(lines: list[str]) -> None:
     """Print a boxed banner with tag conventions (<center>, <nowrap>, <hr>)."""
+    # Sanitize before measuring so the box borders still line up.
+    lines = [_encodable(line) for line in lines]
     processed: list[str] = []
     for line in lines:
         if line == "<hr>":

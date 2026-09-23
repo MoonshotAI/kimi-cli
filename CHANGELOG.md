@@ -27,6 +27,7 @@ Only write entries that are worth mentioning to users.
 ## 1.50.0 (2026-09-02)
 
 - Kosong: Stop sending an empty `anthropic-beta` header when no beta features are declared — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject
+- Web/Vis: Fix `kimi web` and `kimi vis` dying at startup on consoles whose codec cannot encode the banner arrow (GBK on Chinese Windows, for example). The banner is printed before the server binds its port, so the crash left nothing listening; unsupported characters are now replaced instead of raising
 
 ## 1.49.0 (2026-07-16)
 
