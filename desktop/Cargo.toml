@@ -1,0 +1,24 @@
+[package]
+name = "kimi-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "Kimi desktop shell (Tauri 2)"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["process", "io-util", "rt", "rt-multi-thread", "macros", "sync", "time"] }
+rand = "0.8"
+ureq = "2"
+hex = "0.4"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
