@@ -1,7 +1,7 @@
 """Telemetry parity tests for the permission_approval_result event (TS alignment)."""
 
 import asyncio
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from kosong.message import ToolCall
@@ -16,6 +16,52 @@ def _tool_call(name: str = "Bash", *, call_id: str = "tc-1") -> ToolCall:
 
 def _permission_events(mock_track) -> list:
     return [c for c in mock_track.call_args_list if c[0][0] == "permission_approval_result"]
+
+
+@pytest.mark.asyncio
+async def test_manual_approval_triggers_permission_prompt_notification_hook() -> None:
+    approval = Approval()
+    hook_engine = MagicMock()
+    approval.set_hook_engine(hook_engine, session_id="session-1", cwd="/work")
+    token = current_tool_call.set(_tool_call())
+    try:
+        request_task = asyncio.create_task(approval.request("Bash", "bash:ls", "Run command: ls"))
+        await asyncio.sleep(0)
+        pending = approval.runtime.list_pending()
+        assert len(pending) == 1
+
+        hook_engine.fire_and_forget_trigger.assert_called_once_with(
+            "Notification",
+            matcher_value="permission_prompt",
+            input_data={
+                "hook_event_name": "Notification",
+                "session_id": "session-1",
+                "cwd": "/work",
+                "sink": "shell",
+                "notification_type": "permission_prompt",
+                "title": "Bash requires approval",
+                "body": "Run command: ls",
+                "severity": "info",
+            },
+        )
+        approval.runtime.resolve(pending[0].id, "approve")
+        assert await request_task
+    finally:
+        current_tool_call.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_auto_approval_does_not_trigger_permission_prompt_hook() -> None:
+    approval = Approval(yolo=True)
+    hook_engine = MagicMock()
+    approval.set_hook_engine(hook_engine, session_id="session-1", cwd="/work")
+    token = current_tool_call.set(_tool_call())
+    try:
+        assert await approval.request("Bash", "bash:ls", "Run command: ls")
+    finally:
+        current_tool_call.reset(token)
+
+    hook_engine.fire_and_forget_trigger.assert_not_called()
 
 
 @pytest.mark.asyncio

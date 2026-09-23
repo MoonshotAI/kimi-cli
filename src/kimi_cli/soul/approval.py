@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from kimi_cli.approval_runtime import (
     ApprovalCancelledError,
@@ -15,6 +15,9 @@ from kimi_cli.soul.toolset import get_current_step_no, get_current_tool_call_or_
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import DisplayBlock
+
+if TYPE_CHECKING:
+    from kimi_cli.hooks.engine import HookEngine
 
 type Response = Literal["approve", "approve_for_session", "reject"]
 
@@ -137,13 +140,29 @@ class Approval:
     ):
         self._state = state or ApprovalState(yolo=yolo)
         self._runtime = runtime or ApprovalRuntime()
+        self._hook_engine: HookEngine | None = None
+        self._hook_session_id = ""
+        self._hook_cwd = ""
 
     def share(self) -> Approval:
         """Create a new approval queue that shares approval state."""
-        return Approval(state=self._state, runtime=self._runtime)
+        shared = Approval(state=self._state, runtime=self._runtime)
+        if self._hook_engine is not None:
+            shared.set_hook_engine(
+                self._hook_engine,
+                session_id=self._hook_session_id,
+                cwd=self._hook_cwd,
+            )
+        return shared
 
     def set_runtime(self, runtime: ApprovalRuntime) -> None:
         self._runtime = runtime
+
+    def set_hook_engine(self, engine: HookEngine, *, session_id: str, cwd: str) -> None:
+        """Configure hooks emitted when a request needs human approval."""
+        self._hook_engine = engine
+        self._hook_session_id = session_id
+        self._hook_cwd = cwd
 
     @property
     def runtime(self) -> ApprovalRuntime:
@@ -285,6 +304,21 @@ class Approval:
             kind="foreground_turn",
             id=tool_call.id,
         )
+        if self._hook_engine is not None:
+            from kimi_cli.hooks import events
+
+            self._hook_engine.fire_and_forget_trigger(
+                "Notification",
+                matcher_value="permission_prompt",
+                input_data=events.notification(
+                    session_id=self._hook_session_id,
+                    cwd=self._hook_cwd,
+                    sink="shell",
+                    notification_type="permission_prompt",
+                    title=f"{sender} requires approval",
+                    body=description,
+                ),
+            )
         self._runtime.create_request(
             request_id=request_id,
             tool_call_id=tool_call.id,
