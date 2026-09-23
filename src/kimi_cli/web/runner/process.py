@@ -661,8 +661,30 @@ class SessionProcess:
             logger.error(f"{e.__class__.__name__} {e}: Invalid JSONRPC in message: {message}")
             return
 
-        process.stdin.write((message + "\n").encode("utf-8"))
-        await process.stdin.drain()
+        try:
+            process.stdin.write((message + "\n").encode("utf-8"))
+            await process.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError) as e:
+            # Subprocess died between our `start()` check above and the actual write.
+            # `_read_loop` will eventually observe the exit and emit "stopped" /
+            # "crashed", but right now the caller (FastAPI / websocket handler) would
+            # otherwise see a raw exception propagate to the response. Emit an error
+            # status so any attached websocket clients see the failure synchronously.
+            #
+            # If this was a prompt, its id was already registered in
+            # `_in_flight_prompt_ids` above; drop it so the failed turn doesn't
+            # leave the session wedged in `is_busy` forever.
+            if isinstance(in_message, JSONRPCPromptMessage):
+                self._in_flight_prompt_ids.discard(in_message.id)
+            logger.warning(
+                f"send_message: subprocess stdin {e.__class__.__name__}; "
+                f"process likely exited (returncode={process.returncode})"
+            )
+            await self._emit_status(
+                "error",
+                reason="stdin_broken",
+                detail=f"{e.__class__.__name__}: {e}",
+            )
 
 
 class KimiCLIRunner:

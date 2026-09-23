@@ -162,3 +162,52 @@ def test_session_in_error_state_clears_stale_ids_on_new_prompt() -> None:
         sp.clear_in_flight()
 
     assert sp.is_busy is False
+
+
+# ---------------------------------------------------------------------------
+# Tests: send_message broken stdin clears in-flight
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_message_broken_pipe_clears_in_flight() -> None:
+    """A BrokenPipeError while writing a prompt to stdin must drop the prompt's
+    in-flight id, so the failed turn doesn't leave the session stuck in 'busy'.
+    """
+    sp = SessionProcess(uuid4())
+
+    # Don't spawn a real subprocess.
+    async def noop_start() -> None:
+        return None
+
+    sp.start = noop_start  # type: ignore[assignment]
+
+    # stdin whose drain() reports the worker is gone.
+    async def broken_drain() -> None:
+        raise BrokenPipeError("worker gone")
+
+    mock_stdin = MagicMock()
+    mock_stdin.drain = broken_drain
+
+    mock_process = MagicMock()
+    mock_process.stdin = mock_stdin
+    mock_process.returncode = 1
+    sp._process = mock_process
+
+    # Keep the message untouched and broadcasts inert.
+    async def passthrough_handle(in_message: object) -> None:
+        return None
+
+    async def noop_broadcast(msg: str) -> None:
+        return None
+
+    sp._handle_in_message = passthrough_handle  # type: ignore[assignment]
+    sp._broadcast = noop_broadcast  # type: ignore[assignment]
+
+    prompt = '{"jsonrpc":"2.0","method":"prompt","id":"p1","params":{"user_input":"hi"}}'
+    await sp.send_message(prompt)
+
+    assert "p1" not in sp._in_flight_prompt_ids
+    assert sp.is_busy is False
+    assert sp.status.state == "error"
+    assert sp.status.reason == "stdin_broken"
