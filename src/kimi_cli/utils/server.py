@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import socket
+import sys
 import textwrap
 
 
@@ -86,6 +87,25 @@ def get_network_addresses() -> list[str]:
     return addresses
 
 
+def _safe_print(text: str) -> None:
+    """Print *text*, degrading gracefully when stdout can't encode a character.
+
+    When stdout is redirected to a file or pipe on Windows, Python uses the
+    system locale encoding (e.g. GBK/cp936) instead of UTF-8. Banner characters
+    such as ``➜`` (U+279C) are not representable there, so a plain ``print``
+    raises ``UnicodeEncodeError`` and kills the process before the server binds
+    its port. Fall back to the stream's encoding with ``errors="replace"`` so
+    the banner still prints (with a placeholder) and startup continues.
+    """
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        stream = sys.stdout
+        encoding = getattr(stream, "encoding", None) or "utf-8"
+        safe = text.encode(encoding, errors="replace").decode(encoding)
+        print(safe)
+
+
 def print_banner(lines: list[str]) -> None:
     """Print a boxed banner with tag conventions (<center>, <nowrap>, <hr>)."""
     processed: list[str] = []
@@ -106,16 +126,16 @@ def print_banner(lines: list[str]) -> None:
     width = max(60, *(len(line) for line in content_lines))
     top = "+" + "=" * (width + 2) + "+"
 
-    print(top)
+    _safe_print(top)
     for line in processed:
         if line == "<hr>":
-            print("|" + "-" * (width + 2) + "|")
+            _safe_print("|" + "-" * (width + 2) + "|")
         elif line.startswith("<center>"):
             content = line.removeprefix("<center>")
-            print(f"| {content.center(width)} |")
+            _safe_print(f"| {content.center(width)} |")
         elif line.startswith("<nowrap>"):
             content = line.removeprefix("<nowrap>")
-            print(f"| {content.ljust(width)} |")
+            _safe_print(f"| {content.ljust(width)} |")
         else:
-            print(f"| {line.ljust(width)} |")
-    print(top)
+            _safe_print(f"| {line.ljust(width)} |")
+    _safe_print(top)
