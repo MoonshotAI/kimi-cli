@@ -15,6 +15,7 @@ from kimi_cli.skill import (
     find_project_skills_dirs,
     find_user_skills_dirs,
     get_builtin_skills_dir,
+    read_skill_text,
     resolve_skills_roots,
 )
 
@@ -1426,6 +1427,41 @@ async def test_discover_skills_permission_denied_returns_empty(monkeypatch, tmp_
 
     skills = await skill_mod.discover_skills(root_kp, scope="extra")
     assert skills == []
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_skips_invalid_utf8_subdir_skill(tmp_path):
+    root = tmp_path / "skills"
+    root.mkdir()
+    broken = root / "broken"
+    broken.mkdir()
+    (broken / "SKILL.md").write_bytes(b"---\nname: broken\ndescription: \xcf\n---\n")
+    _write_skill(
+        root / "valid",
+        "---\nname: valid\ndescription: Valid skill\n---\n",
+    )
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+
+    assert [skill.name for skill in skills] == ["valid"]
+
+
+@pytest.mark.asyncio
+async def test_read_skill_text_returns_none_for_invalid_utf8(tmp_path):
+    root = tmp_path / "skills"
+    broken = root / "broken"
+    broken.mkdir(parents=True)
+    skill_md = broken / "SKILL.md"
+    skill_md.write_bytes(b"\xcf")
+    skill = Skill(
+        name="broken",
+        description="Broken skill",
+        dir=KaosPath.unsafe_from_local_path(broken),
+        skill_md_file=KaosPath.unsafe_from_local_path(skill_md),
+        scope="user",
+    )
+
+    assert await read_skill_text(skill) is None
 
 
 # ---------------------------------------------------------------------------
