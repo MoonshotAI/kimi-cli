@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -384,7 +385,7 @@ async def load_agent(
     agent_file: Path,
     runtime: Runtime,
     *,
-    mcp_configs: list[MCPConfig] | list[dict[str, Any]],
+    mcp_configs: Sequence[MCPConfig | dict[str, Any]],
     start_mcp_loading: bool = True,
 ) -> Agent:
     """

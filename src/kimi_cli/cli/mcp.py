@@ -4,6 +4,8 @@ from typing import Annotated, Any, Literal
 
 import typer
 
+from kimi_cli.exception import MCPConfigError
+
 cli = typer.Typer(help="Manage MCP server configurations.")
 
 
@@ -12,6 +14,106 @@ def get_global_mcp_config_file() -> Path:
     from kimi_cli.share import get_share_dir
 
     return get_share_dir() / "mcp.json"
+
+
+def get_project_mcp_config_file(work_dir: Path) -> Path | None:
+    """Get the project-level MCP config file path if it exists.
+
+    Args:
+        work_dir: The working directory to search for `.kimi/mcp.json`.
+
+    Returns:
+        Path to the project-level MCP config file if it exists, otherwise None.
+    """
+    project_mcp_file = work_dir / ".kimi" / "mcp.json"
+    if project_mcp_file.exists():
+        return project_mcp_file
+    return None
+
+
+def collect_file_mcp_configs(
+    strategy: Literal["merge", "override"],
+    *,
+    work_dir: Path | None = None,
+    explicit_files: list[Path] | None = None,
+    raw_jsons: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Collect MCP config dicts from file sources according to the strategy.
+
+    Priority (lowest to highest):
+        1. Global ``~/.kimi/mcp.json``
+        2. Project ``<work_dir>/.kimi/mcp.json``
+        3. Explicit ``--mcp-config-file`` paths
+        4. Raw ``--mcp-config`` JSON strings
+
+    For ``"merge"`` all available layers are returned in priority order.
+    Later layers override duplicate server names when the configs are merged.
+
+    For ``"override"`` only the highest-priority available layer is returned.
+    Explicit inputs beat project config, which beats global config.
+
+    Args:
+        strategy: ``"merge"`` or ``"override"``.
+        work_dir: Working directory to search for project-level config.
+        explicit_files: Paths explicitly provided by the user.
+        raw_jsons: Raw JSON strings explicitly provided by the user.
+
+    Returns:
+        List of parsed MCP config dicts.
+    """
+    explicit_files = explicit_files or []
+    raw_jsons = raw_jsons or []
+
+    def _load(path: Path) -> dict[str, Any]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise MCPConfigError(f"Invalid JSON in MCP config file '{path}': {exc}") from exc
+
+    configs: list[dict[str, Any]] = []
+
+    if strategy == "merge":
+        global_file = get_global_mcp_config_file()
+        if global_file.exists():
+            configs.append(_load(global_file))
+
+        if work_dir is not None:
+            project_file = get_project_mcp_config_file(work_dir)
+            if project_file is not None:
+                configs.append(_load(project_file))
+
+        for path in explicit_files:
+            configs.append(_load(path))
+
+        for text in raw_jsons:
+            try:
+                configs.append(json.loads(text))
+            except json.JSONDecodeError as exc:
+                raise MCPConfigError(f"Invalid JSON in --mcp-config: {exc}") from exc
+
+    else:  # override
+        if explicit_files or raw_jsons:
+            for path in explicit_files:
+                configs.append(_load(path))
+            for text in raw_jsons:
+                try:
+                    configs.append(json.loads(text))
+                except json.JSONDecodeError as exc:
+                    raise MCPConfigError(f"Invalid JSON in --mcp-config: {exc}") from exc
+        elif work_dir is not None:
+            project_file = get_project_mcp_config_file(work_dir)
+            if project_file is not None:
+                configs.append(_load(project_file))
+            else:
+                global_file = get_global_mcp_config_file()
+                if global_file.exists():
+                    configs.append(_load(global_file))
+        else:
+            global_file = get_global_mcp_config_file()
+            if global_file.exists():
+                configs.append(_load(global_file))
+
+    return configs
 
 
 def _load_mcp_config() -> dict[str, Any]:

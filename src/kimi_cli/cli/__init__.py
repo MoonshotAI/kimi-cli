@@ -309,7 +309,8 @@ def kimi(
             readable=True,
             help=(
                 "MCP config file to load. Add this option multiple times to specify multiple MCP "
-                "configs. Default: none."
+                "configs. When omitted, the project-level `<work_dir>/.kimi/mcp.json` is used if "
+                "it exists; otherwise the global `~/.kimi/mcp.json` is used as a fallback."
             ),
         ),
     ] = None,
@@ -366,7 +367,6 @@ def kimi(
     """Kimi, your next CLI agent."""
     import asyncio
     import contextlib
-    import json
 
     from kimi_cli.utils.proctitle import init_process_name
 
@@ -381,15 +381,15 @@ def kimi(
 
     from kimi_cli.agentspec import DEFAULT_AGENT_FILE, OKABE_AGENT_FILE
     from kimi_cli.app import KimiCLI, enable_logging
-    from kimi_cli.config import Config, load_config_from_string
-    from kimi_cli.exception import ConfigError
+    from kimi_cli.config import Config, load_config, load_config_from_string
+    from kimi_cli.exception import ConfigError, MCPConfigError
     from kimi_cli.hooks import events as hook_events
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
     from kimi_cli.ui.shell.startup import ShellStartupProgress
     from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
 
-    from .mcp import get_global_mcp_config_file
+    from .mcp import collect_file_mcp_configs
 
     # Don't redirect stderr during argument parsing. Our stderr redirector
     # replaces fd=2 with a pipe, which would swallow Click/Typer startup errors.
@@ -515,27 +515,30 @@ def kimi(
     file_configs = list(mcp_config_file or [])
     raw_mcp_config = list(mcp_config or [])
 
-    # Use default MCP config file if no MCP config is provided
-    if not file_configs:
-        default_mcp_file = get_global_mcp_config_file()
-        if default_mcp_file.exists():
-            file_configs.append(default_mcp_file)
+    work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
+
+    # Resolve MCP merge strategy from config (load default config if needed).
+    if isinstance(config, Config):
+        mcp_strategy = config.mcp.merge_strategy
+    elif config is not None:
+        mcp_strategy = load_config(config).mcp.merge_strategy
+    else:
+        config = load_config()
+        mcp_strategy = config.mcp.merge_strategy
 
     try:
-        mcp_configs = [json.loads(conf.read_text(encoding="utf-8")) for conf in file_configs]
-    except json.JSONDecodeError as e:
-        raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config-file") from e
-
-    try:
-        mcp_configs += [json.loads(conf) for conf in raw_mcp_config]
-    except json.JSONDecodeError as e:
-        raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
+        mcp_configs = collect_file_mcp_configs(
+            mcp_strategy,
+            work_dir=work_dir.unsafe_to_local_path(),
+            explicit_files=file_configs,
+            raw_jsons=raw_mcp_config,
+        )
+    except MCPConfigError as e:
+        raise typer.BadParameter(str(e), param_hint="--mcp-config-file") from e
 
     skills_dirs: list[KaosPath] | None = None
     if local_skills_dir:
         skills_dirs = [KaosPath.unsafe_from_local_path(p) for p in local_skills_dir]
-
-    work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
     # Tracks the most recently created/loaded session so that _reload_loop's
     # exception handler can clean it up even when _run() fails before returning.
