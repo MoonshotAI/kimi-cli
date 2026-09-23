@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
+from kosong.message import Message
+from kosong.message import TextPart as MessageTextPart
 from kosong.tooling.empty import EmptyToolset
 
 from kimi_cli.soul.agent import Agent, Runtime
@@ -12,6 +15,7 @@ from kimi_cli.soul.context import Context
 from kimi_cli.soul.dynamic_injection import DynamicInjection, DynamicInjectionProvider
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.slash import afk as afk_slash
+from kimi_cli.soul.slash import clear as clear_slash
 from kimi_cli.soul.slash import yolo as yolo_slash
 from kimi_cli.wire.types import TextPart
 
@@ -160,6 +164,24 @@ async def test_yolo_slash_under_afk_only_toggles_yolo_flag(
     # Toast must reflect yolo being turned ON, not the misleading "require approval".
     assert any("auto-approved" in s.text.lower() for s in sent)
     assert not any("require approval" in s.text.lower() for s in sent)
+
+
+async def test_clear_slash_reports_rotated_backup_and_undo_note(
+    runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    soul = _make_soul(runtime, tmp_path)
+    await soul.context.write_system_prompt(soul.agent.system_prompt)
+    await soul.context.append_message(Message(role="user", content=[MessageTextPart(text="hello")]))
+
+    sent: list[object] = []
+    monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
+
+    await _run(clear_slash, soul)
+
+    clear_msgs = [m.text for m in sent if isinstance(m, TextPart) and "context has been cleared" in m.text]
+    assert len(clear_msgs) == 1
+    assert re.search(r"rotated to [^\s]+_1\.jsonl", clear_msgs[0]) is not None
+    assert "/undo" in clear_msgs[0]
 
 
 async def test_yolo_slash_off_under_afk_does_not_claim_approval_required(

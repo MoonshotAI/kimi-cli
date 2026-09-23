@@ -199,12 +199,15 @@ class Context:
 
         self._pending_token_estimate = estimate_text_tokens(messages_after_last_usage)
 
-    async def clear(self):
+    async def clear(self) -> Path:
         """
         Clear the context history.
         This is almost equivalent to revert_to(0), but without relying on the assumption
         that the first checkpoint exists.
         File backend will be rotated.
+
+        Returns:
+            Path: Rotated backup file path.
 
         Raises:
             RuntimeError: When no available rotation path is found.
@@ -228,6 +231,7 @@ class Context:
         self._pending_token_estimate = 0
         self._next_checkpoint_id = 0
         self._system_prompt = None
+        return rotated_file_path
 
     async def append_message(self, message: Message | Sequence[Message]):
         logger.debug("Appending message(s) to context: {message}", message=message)
