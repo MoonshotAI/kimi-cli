@@ -134,9 +134,18 @@ class StrReplaceFile(CallableTool2[Params]):
             original_content = content
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
-            # Apply all edits
+            # Apply all edits, counting replacements against the running content.
+            # Edits apply sequentially, so counting against the original content
+            # miscounts chained edits (e.g. one edit whose `old` is produced by an
+            # earlier edit is not found in the original and would be counted 0).
+            total_replacements = 0
             for edit in edits:
+                before = content
                 content = self._apply_edit(content, edit)
+                if edit.replace_all:
+                    total_replacements += before.count(edit.old)
+                elif edit.old in before:
+                    total_replacements += 1
 
             # Check if any changes were made
             if content == original_content:
@@ -168,14 +177,6 @@ class StrReplaceFile(CallableTool2[Params]):
 
             # Write the modified content back to the file
             await p.write_text(content, errors="replace")
-
-            # Count changes for success message
-            total_replacements = 0
-            for edit in edits:
-                if edit.replace_all:
-                    total_replacements += original_content.count(edit.old)
-                else:
-                    total_replacements += 1 if edit.old in original_content else 0
 
             return ToolReturnValue(
                 is_error=False,

@@ -75,6 +75,31 @@ async def test_replace_multiple_edits(
     assert await file_path.read_text() == "Hi world! See you world!"
 
 
+async def test_replace_chained_edits_report_correct_count(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """Chained edits (a later edit's `old` is produced by an earlier one) must
+    report the true number of replacements, not the count against the original."""
+    file_path = temp_work_dir / "test.txt"
+    await file_path.write_text("hello world")
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=[
+                Edit(old="hello", new="goodbye"),
+                Edit(old="goodbye", new="farewell"),
+            ],
+        )
+    )
+
+    assert not result.is_error
+    assert await file_path.read_text() == "farewell world"
+    # Both edits replaced text, so the message must say 2 replacements (the old
+    # code counted "goodbye" against the original and reported 1).
+    assert "2 total replacement(s)" in result.message
+
+
 async def test_replace_multiline_content(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):

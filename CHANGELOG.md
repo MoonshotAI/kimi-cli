@@ -27,6 +27,7 @@ Only write entries that are worth mentioning to users.
 ## 1.50.0 (2026-09-02)
 
 - Kosong: Stop sending an empty `anthropic-beta` header when no beta features are declared — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject
+- Tool: Fix StrReplaceFile reporting the wrong replacement count when edits are chained. The total was counted against the original file content, so a later edit whose target text was produced by an earlier edit was counted as zero; the count now tracks the running content
 
 ## 1.49.0 (2026-07-16)
 
