@@ -49,6 +49,39 @@ def find_available_port(host: str, start_port: int, max_attempts: int = 10) -> i
     )
 
 
+def _get_interface_addrs_ioctl() -> list[str]:
+    """Enumerate IPv4 addresses via socket.if_nameindex + ioctl (Linux).
+
+    This fallback covers virtual interfaces (e.g. Tailscale, WireGuard,
+    Docker bridges) that ``getaddrinfo`` and the default-route heuristic
+    often miss.
+    """
+    addresses: list[str] = []
+    try:
+        import fcntl
+        import struct
+
+        SIOCGIFADDR = 0x8915
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            for _, ifname in socket.if_nameindex():
+                try:
+                    ifreq = struct.pack(
+                        "16sH14s",
+                        ifname[:15].encode("utf-8"),
+                        socket.AF_INET,
+                        b"\x00" * 14,
+                    )
+                    res = fcntl.ioctl(s.fileno(), SIOCGIFADDR, ifreq)
+                    ip = socket.inet_ntoa(res[20:24])
+                    if ip and not ip.startswith("127.") and ip not in addresses:
+                        addresses.append(ip)
+                except OSError:
+                    continue
+    except Exception:
+        pass
+    return addresses
+
+
 def get_network_addresses() -> list[str]:
     """Get non-loopback IPv4 addresses for this machine."""
     addresses: list[str] = []
@@ -82,6 +115,12 @@ def get_network_addresses() -> list[str]:
                         addresses.append(addr)
     except (ImportError, Exception):
         pass
+
+    # Fallback: ioctl enumeration covers virtual interfaces (Tailscale,
+    # WireGuard, etc.) that the methods above may miss.
+    for addr in _get_interface_addrs_ioctl():
+        if addr not in addresses:
+            addresses.append(addr)
 
     return addresses
 
