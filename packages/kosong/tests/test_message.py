@@ -7,6 +7,7 @@ from kosong.message import (
     TextPart,
     ThinkPart,
     ToolCall,
+    ToolCallPart,
     VideoURLPart,
 )
 
@@ -297,3 +298,39 @@ Hello, \n\
 world
 !\
 """)
+
+
+def test_text_part_merge_buffer_requires_finalize():
+    part = TextPart(text="Hello, ")
+    assert part.merge_in_place(TextPart(text="world"))
+    assert part.merge_in_place(TextPart(text="!"))
+    # Buffered merges leave the public field stale until finalize.
+    assert part.text == "Hello, "
+    part.finalize_merge()
+    assert part.text == "Hello, world!"
+
+
+def test_text_part_model_dump_finalizes_merge_buffer():
+    part = TextPart(text="Hello, ")
+    assert part.merge_in_place(TextPart(text="world!"))
+    assert part.model_dump()["text"] == "Hello, world!"
+    assert part.text == "Hello, world!"
+
+
+def test_tool_call_merge_buffer_finalizes_arguments():
+    call = ToolCall(
+        id="1",
+        function=ToolCall.FunctionBody(name="fn", arguments=None),
+    )
+    assert call.merge_in_place(ToolCallPart(arguments_part='{"a":'))
+    assert call.merge_in_place(ToolCallPart(arguments_part="1}"))
+    assert call.function.arguments is None
+    call.finalize_merge()
+    assert call.function.arguments == '{"a":1}'
+
+
+def test_message_extract_text_finalizes_merged_parts():
+    part = TextPart(text="Hello, ")
+    assert part.merge_in_place(TextPart(text="world!"))
+    message = Message(role="assistant", content=[part])
+    assert message.extract_text() == "Hello, world!"

@@ -1,7 +1,8 @@
+from collections.abc import Sequence
 from typing import Protocol
 
 import rich
-from kosong.message import Message
+from kosong.message import MergeableMixin, Message
 
 from kimi_cli.cli import OutputFormat
 from kimi_cli.soul.message import tool_result_to_message
@@ -28,7 +29,14 @@ class Printer(Protocol):
 
 def _merge_content(buffer: list[ContentPart], part: ContentPart) -> None:
     if not buffer or not buffer[-1].merge_in_place(part):
+        if buffer:
+            buffer[-1].finalize_merge()
         buffer.append(part)
+
+
+def _finalize_parts(parts: Sequence[MergeableMixin]) -> None:
+    for part in parts:
+        part.finalize_merge()
 
 
 class TextPrinter(Printer):
@@ -95,6 +103,9 @@ class JsonPrinter(Printer):
         if not self._content_buffer and not self._tool_call_buffer:
             return
 
+        _finalize_parts(self._content_buffer)
+        _finalize_parts(self._tool_call_buffer)
+
         message = Message(
             role="assistant",
             content=self._content_buffer,
@@ -135,6 +146,7 @@ class FinalOnlyTextPrinter(Printer):
     def flush(self) -> None:
         if not self._content_buffer:
             return
+        _finalize_parts(self._content_buffer)
         message = Message(role="assistant", content=self._content_buffer)
         text = message.extract_text()
         if text:
@@ -158,6 +170,7 @@ class FinalOnlyJsonPrinter(Printer):
     def flush(self) -> None:
         if not self._content_buffer:
             return
+        _finalize_parts(self._content_buffer)
         message = Message(role="assistant", content=self._content_buffer)
         text = message.extract_text()
         if text:
