@@ -15,6 +15,26 @@ from kimi_cli.utils.file_filter import (
 )
 
 
+def test_query_walk_uses_separate_bounded_scan_budget(tmp_path: Path) -> None:
+    for index in range(10):
+        (tmp_path / f"aaa_{index:02d}.txt").write_text("")
+    target = tmp_path / "zzz_needle.txt"
+    target.write_text("")
+
+    assert target.name not in list_files_walk(
+        tmp_path,
+        query="needle",
+        limit=1000,
+        scan_limit=10,
+    )
+    assert target.name in list_files_walk(
+        tmp_path,
+        query="needle",
+        limit=1000,
+        scan_limit=11,
+    )
+
+
 def _init_git(root: Path) -> None:
     for cmd in (
         ["git", "init"],
