@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from io import BytesIO
 from typing import cast
 
@@ -84,6 +85,35 @@ async def test_read_image_file_with_size(
     assert not result.is_error
     assert result.message == snapshot(
         f"Loaded image file `{image_file}` (image/png, {len(data)} bytes, original size 3x4px). "
+        "If you need to output coordinates, output relative coordinates first and "
+        "compute absolute coordinates using the original image size; if you generate or "
+        "edit images/videos via commands or scripts, read the result back immediately "
+        "before continuing."
+    )
+
+
+async def test_read_ico_file_as_png(read_media_file_tool: ReadMediaFile, temp_work_dir: KaosPath):
+    """ICO files are normalized to a model-supported PNG payload."""
+    Image = pytest.importorskip("PIL.Image")
+    image_file = temp_work_dir / "favicon.ico"
+    image = Image.new("RGBA", (16, 16), color=(255, 0, 0, 255))
+    buffer = BytesIO()
+    image.save(buffer, format="ICO")
+    data = buffer.getvalue()
+    await image_file.write_bytes(data)
+
+    result = await read_media_file_tool(Params(path=str(image_file)))
+
+    assert not result.is_error
+    assert isinstance(result.output, list)
+    part = result.output[1]
+    assert isinstance(part, ImageURLPart)
+    prefix, encoded = part.image_url.url.split(",", maxsplit=1)
+    assert prefix == "data:image/png;base64"
+    assert base64.b64decode(encoded).startswith(b"\x89PNG\r\n\x1a\n")
+    assert result.message == snapshot(
+        f"Loaded image file `{image_file}` "
+        f"(image/x-icon, {len(data)} bytes, original size 16x16px). "
         "If you need to output coordinates, output relative coordinates first and "
         "compute absolute coordinates using the original image size; if you generate or "
         "edit images/videos via commands or scripts, read the result back immediately "

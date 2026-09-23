@@ -38,6 +38,18 @@ def _extract_image_size(data: bytes) -> tuple[int, int] | None:
         return None
 
 
+def _normalize_image_payload(mime_type: str, data: bytes) -> tuple[str, bytes]:
+    if mime_type != "image/x-icon":
+        return mime_type, data
+
+    from PIL import Image
+
+    output = BytesIO()
+    with Image.open(BytesIO(data)) as image:
+        image.save(output, format="PNG")
+    return "image/png", output.getvalue()
+
+
 class Params(BaseModel):
     path: str = Field(
         description=(
@@ -112,10 +124,13 @@ class ReadMediaFile(CallableTool2[Params]):
         match file_type.kind:
             case "image":
                 data = await path.read_bytes()
-                data_url = _to_data_url(file_type.mime_type, data)
+                image_size = _extract_image_size(data)
+                payload_mime_type, payload_data = _normalize_image_payload(
+                    file_type.mime_type, data
+                )
+                data_url = _to_data_url(payload_mime_type, payload_data)
                 part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url))
                 wrapped = wrap_media_part(part, tag="image", attrs={"path": media_path})
-                image_size = _extract_image_size(data)
             case "video":
                 data = await path.read_bytes()
                 if (llm := self._runtime.llm) and isinstance(llm.chat_provider, Kimi):
