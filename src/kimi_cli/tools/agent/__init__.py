@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 from typing import override
 
+from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
@@ -54,6 +55,14 @@ class Params(BaseModel):
         ),
         ge=30,
         le=MAX_BACKGROUND_TIMEOUT,
+    )
+    work_dir: str | None = Field(
+        default=None,
+        description=(
+            "Optional working directory for the subagent. When set, the subagent's file tools "
+            "and system prompt will use this directory instead of the parent agent's working "
+            "directory. Must be an absolute path."
+        ),
     )
 
     @property
@@ -128,6 +137,16 @@ class AgentTool(CallableTool2[Params]):
                 message=f"Unknown model alias: {params.model}",
                 brief="Invalid model alias",
             )
+        if params.work_dir is not None and not KaosPath(params.work_dir).is_absolute():
+            return ToolError(
+                message=f"work_dir must be an absolute path, got: {params.work_dir}",
+                brief="Invalid work_dir",
+            )
+        if params.resume and params.work_dir is not None:
+            return ToolError(
+                message="work_dir cannot be set when resuming an existing agent. The agent retains its original working directory.",
+                brief="work_dir not allowed on resume",
+            )
         if params.run_in_background:
             return await self._run_in_background(params)
         timeout = params.effective_timeout
@@ -139,6 +158,7 @@ class AgentTool(CallableTool2[Params]):
                 requested_type=params.subagent_type or "coder",
                 model=params.model,
                 resume=params.resume,
+                work_dir=params.work_dir,
             )
             if timeout is not None:
                 return await asyncio.wait_for(runner.run(req), timeout=timeout)
@@ -213,6 +233,7 @@ class AgentTool(CallableTool2[Params]):
                         subagent_type=actual_type,
                         model_override=params.model,
                         effective_model=params.model or type_def.default_model,
+                        work_dir=params.work_dir,
                     ),
                 )
                 created_instance = True
