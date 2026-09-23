@@ -2,6 +2,8 @@ from types import SimpleNamespace
 from typing import cast
 
 from kosong.message import Message
+from rich.console import Group
+from rich.text import Text
 
 import kimi_cli.ui.shell as shell_module
 from kimi_cli.soul import Soul
@@ -25,6 +27,18 @@ def _noop(app: object, args: str) -> None:
     pass
 
 
+def _assert_user_echo(rendered: object, expected_plain: str) -> None:
+    assert isinstance(rendered, Group)
+    assert len(rendered.renderables) == 2
+    user_line, separator = rendered.renderables
+    assert isinstance(user_line, Text)
+    assert isinstance(separator, Text)
+    assert user_line.plain == expected_plain
+    assert str(user_line.style) == "#007AFF"
+    assert separator.plain
+    assert set(separator.plain) == {"-"}
+
+
 def _make_shell(*command_names: str) -> Shell:
     commands = [
         SlashCommand(
@@ -44,7 +58,8 @@ def test_echo_agent_input_prints_stringified_user_message(monkeypatch) -> None:
 
     Shell._echo_agent_input(_make_user_input("hi"))
 
-    assert [getattr(t, "plain", t) for t in printed] == ["✨ hi"]
+    assert len(printed) == 1
+    _assert_user_echo(printed[0], "✨ hi")
 
 
 def test_echo_agent_input_uses_display_command_for_placeholders(monkeypatch) -> None:
@@ -60,13 +75,14 @@ def test_echo_agent_input_uses_display_command_for_placeholders(monkeypatch) -> 
 
     Shell._echo_agent_input(user_input)
 
-    assert [getattr(t, "plain", t) for t in printed] == ["✨ [Pasted text #1 +3 lines]"]
+    assert len(printed) == 1
+    _assert_user_echo(printed[0], "✨ [Pasted text #1 +3 lines]")
 
 
 def test_render_user_echo_preserves_literal_brackets() -> None:
     rendered = render_user_echo(Message(role="user", content=[TextPart(text="[brackets]")]))
 
-    assert rendered.plain == "✨ [brackets]"
+    _assert_user_echo(rendered, "✨ [brackets]")
 
 
 def test_render_user_echo_preserves_image_placeholder_literal() -> None:
@@ -77,7 +93,7 @@ def test_render_user_echo_preserves_image_placeholder_literal() -> None:
         )
     )
 
-    assert rendered.plain == "✨ [image]"
+    _assert_user_echo(rendered, "✨ [image]")
 
 
 def test_render_user_echo_preserves_audio_placeholder_literal() -> None:
@@ -92,7 +108,7 @@ def test_render_user_echo_preserves_audio_placeholder_literal() -> None:
         )
     )
 
-    assert rendered.plain == "✨ [audio:clip]"
+    _assert_user_echo(rendered, "✨ [audio:clip]")
 
 
 def test_render_user_echo_preserves_video_placeholder_literal() -> None:
@@ -105,7 +121,7 @@ def test_render_user_echo_preserves_video_placeholder_literal() -> None:
         )
     )
 
-    assert rendered.plain == "✨ [video]"
+    _assert_user_echo(rendered, "✨ [video]")
 
 
 def test_render_user_echo_preserves_mixed_content_order() -> None:
@@ -121,7 +137,7 @@ def test_render_user_echo_preserves_mixed_content_order() -> None:
         )
     )
 
-    assert rendered.plain == "✨ look [image][audio][video]"
+    _assert_user_echo(rendered, "✨ look [image][audio][video]")
 
 
 def test_should_echo_agent_input_for_plain_agent_message() -> None:

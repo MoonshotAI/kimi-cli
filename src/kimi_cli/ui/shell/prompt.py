@@ -1598,6 +1598,8 @@ class CustomPromptSession:
         buffer_container.filter = buffer_container.filter & Condition(
             self._should_render_input_buffer
         )
+        if hasattr(buffer_container, "content") and isinstance(buffer_container.content, Window):
+            buffer_container.content.style = "class:user-input"
         self._prompt_buffer_container = buffer_container
 
     def _should_show_slash_completion_menu(self) -> bool:

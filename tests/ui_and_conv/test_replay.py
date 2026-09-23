@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from kosong.message import Message
+from rich.console import Group
 
 import kimi_cli.ui.shell.replay as replay_module
 from kimi_cli.soul.message import system_reminder
@@ -32,6 +33,12 @@ def _make_notification_message(notification_id: str = "n1") -> Message:
             )
         ],
     )
+
+
+def _get_first_renderable_plain(text):
+    if isinstance(text, Group) and text.renderables:
+        return getattr(text.renderables[0], "plain", str(text.renderables[0]))
+    return getattr(text, "plain", str(text))
 
 
 def test_build_replay_turns_from_history_ignores_notifications() -> None:
@@ -82,7 +89,7 @@ async def test_replay_recent_history_excludes_notifications(
     monkeypatch.setattr(
         replay_module.console,
         "print",
-        lambda text: printed.append(getattr(text, "plain", str(text))),
+        lambda text: printed.append(_get_first_renderable_plain(text)),
     )
 
     async def fake_visualize(*_args, **_kwargs) -> None:
@@ -165,7 +172,7 @@ async def test_replay_recent_history_falls_back_to_history_when_wire_misses_stee
     monkeypatch.setattr(
         replay_module.console,
         "print",
-        lambda text: printed.append(getattr(text, "plain", str(text))),
+        lambda text: printed.append(_get_first_renderable_plain(text)),
     )
 
     async def fake_visualize(*_args, **_kwargs) -> None:
@@ -235,7 +242,7 @@ async def test_replay_recent_history_falls_back_to_history_when_duplicate_text_s
     monkeypatch.setattr(
         replay_module.console,
         "print",
-        lambda text: printed.append(getattr(text, "plain", str(text))),
+        lambda text: printed.append(_get_first_renderable_plain(text)),
     )
 
     async def fake_visualize(*_args, **_kwargs) -> None:
