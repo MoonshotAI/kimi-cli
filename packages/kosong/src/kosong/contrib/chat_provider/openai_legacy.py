@@ -138,6 +138,14 @@ class OpenAILegacy:
             if has_think_part:
                 reasoning_effort = "medium"
 
+        # `with_thinking("off")` resolves to `None`, but passing an explicit `None` makes the
+        # OpenAI SDK serialize `"reasoning_effort": null`. That is invalid in the chat-completions
+        # schema: strict validators reject it (HTTP 400 -> retry/rate-limit loop) and lenient
+        # backends treat it as "reasoning on by default". Use the `omit` sentinel so the field is
+        # dropped from the payload instead. See: https://github.com/MoonshotAI/kimi-cli/issues/2465
+        if reasoning_effort is None:
+            reasoning_effort = omit
+
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
