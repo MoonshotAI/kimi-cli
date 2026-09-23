@@ -79,7 +79,7 @@ async def test_ask_user_basic(ask_user_tool: AskUserQuestion):
 
 
 async def test_ask_user_dismissed(ask_user_tool: AskUserQuestion):
-    """Test that user dismiss returns a non-error result with dismiss note."""
+    """Test that user dismiss returns an error result instructing the LLM to stop."""
     wire = Wire()
     wire_token = _current_wire.set(wire)
     tool_call = ToolCall(
@@ -100,11 +100,10 @@ async def test_ask_user_dismissed(ask_user_tool: AskUserQuestion):
         msg.resolve({})
 
         result = await asyncio.wait_for(tool_task, timeout=2.0)
-        assert not result.is_error
+        assert result.is_error
         assert isinstance(result.output, str)
-        parsed = json.loads(result.output)
-        assert parsed["answers"] == {}
-        assert "dismissed" in parsed.get("note", "").lower()
+        assert "dismissed" in result.output.lower()
+        assert "do not" in result.output.lower()
     finally:
         wire.shutdown()
         current_tool_call.reset(tc_token)

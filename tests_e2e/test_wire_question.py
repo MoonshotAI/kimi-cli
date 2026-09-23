@@ -180,10 +180,8 @@ def test_question_request_error_response(tmp_path) -> None:
         for tr in tool_results:
             if tr["payload"]["tool_call_id"] == "tc-q2":
                 rv = tr["payload"]["return_value"]
-                assert not rv["is_error"]
-                output = json.loads(rv["output"])
-                assert output["answers"] == {}
-                assert "dismissed" in output.get("note", "").lower()
+                assert rv["is_error"]
+                assert "dismissed" in rv["output"].lower()
                 break
         else:
             raise AssertionError("ToolResult for tc-q2 not found")
