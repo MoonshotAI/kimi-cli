@@ -435,3 +435,12 @@ body {
     opacity: 1 !important;
   }
 }
+
+/* ==========================================================================
+ * Fix: Override Radix UI ScrollArea content container display
+ * Prevents content width from expanding beyond viewport when filenames are long.
+ * See: https://github.com/MoonshotAI/kimi-cli/issues/TODO
+ * ========================================================================== */
+[data-radix-scroll-area-viewport] > div[style*="display:table"] {
+  display: block !important;
+}
