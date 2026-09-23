@@ -31,6 +31,7 @@ from kimi_cli.approval_runtime import (
     set_current_approval_source,
 )
 from kimi_cli.background import build_active_task_snapshot
+from kimi_cli.exception import MCPRuntimeError
 from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.llm import (
     DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN,
@@ -987,6 +988,8 @@ class KimiSoul:
                                 failed_count=_failed,
                                 total_count=mcp_snap.total,
                             )
+            except MCPRuntimeError as exc:
+                logger.warning("MCP server loading failed, continuing without MCP tools: {}", exc)
             finally:
                 if loading:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
