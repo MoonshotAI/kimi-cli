@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Self, override
@@ -21,6 +22,18 @@ from kimi_cli.utils.subprocess_env import get_noninteractive_env
 
 MAX_FOREGROUND_TIMEOUT = 5 * 60
 MAX_BACKGROUND_TIMEOUT = 24 * 60 * 60
+PIPE_DRAIN_GRACE = 2.0
+"""Seconds to keep draining stdout/stderr after the shell process exits.
+
+A detached child that inherited the pipes can keep them open long after the
+shell itself has exited; without a bound the tool would block until the full
+command timeout waiting for an EOF that may never come."""
+EXIT_POLL_INTERVAL = 0.05
+"""Seconds between exit checks while the shell process is running.
+
+`KaosProcess.wait()` may not resolve until all pipes close (asyncio gates its
+exit waiters on pipe disconnection), so process exit is observed by polling
+`returncode` instead."""
 
 
 class Params(BaseModel):
@@ -244,21 +257,39 @@ class Shell(CallableTool2[Params]):
         # EOF instead of hanging forever waiting for input that will never come.
         process.stdin.close()
 
+        async def _wait_exit() -> int:
+            while (exitcode := process.returncode) is None:
+                await asyncio.sleep(EXIT_POLL_INTERVAL)
+            return exitcode
+
+        def _consume_exception(task: asyncio.Future[tuple[None, None]]) -> None:
+            # When the read task is abandoned after cancel (user interrupt or
+            # command timeout), retrieve its outcome so the event loop does
+            # not report "exception was never retrieved".
+            if not task.cancelled():
+                task.exception()
+
+        read_task = asyncio.gather(
+            _read_stream(process.stdout, stdout_cb),
+            _read_stream(process.stderr, stderr_cb),
+        )
+        read_task.add_done_callback(_consume_exception)
         try:
-            await asyncio.wait_for(
-                asyncio.gather(
-                    _read_stream(process.stdout, stdout_cb),
-                    _read_stream(process.stderr, stderr_cb),
-                ),
-                timeout,
-            )
-            return await process.wait()
+            exitcode = await asyncio.wait_for(_wait_exit(), timeout)
         except asyncio.CancelledError:
+            read_task.cancel()
             await process.kill()
             raise
         except TimeoutError:
+            read_task.cancel()
             await process.kill()
             raise
+        # The shell has exited, but a detached child that inherited the
+        # pipes can keep them open indefinitely; drain what is left
+        # instead of waiting for an EOF that may never come.
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(read_task, PIPE_DRAIN_GRACE)
+        return exitcode
 
     def _shell_args(self, command: str) -> tuple[str, ...]:
         return (str(self._shell_path), "-c", command)

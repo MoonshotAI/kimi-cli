@@ -27,6 +27,7 @@ Only write entries that are worth mentioning to users.
 ## 1.50.0 (2026-09-02)
 
 - Kosong: Stop sending an empty `anthropic-beta` header when no beta features are declared — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject
+- Shell: Fix the shell tool blocking until the full command timeout when a detached child process inherits stdout/stderr, then wrongly reporting a timeout kill. The tool now returns shortly after the shell itself exits and drains remaining pipe output for a bounded grace period
 
 ## 1.49.0 (2026-07-16)
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import platform
+import time
 
 import pytest
 from inline_snapshot import snapshot
@@ -95,6 +96,23 @@ async def test_command_timeout_expires(shell_tool: Shell):
     assert result.is_error
     assert result.message == snapshot("Command killed by timeout (1s)")
     assert result.brief == snapshot("Killed by timeout (1s)")
+
+
+async def test_detached_child_holding_pipes_does_not_block_until_timeout(shell_tool: Shell):
+    """A detached child that inherits stdout/stderr must not stall the tool.
+
+    The shell exits immediately, but the backgrounded sleep keeps the pipes
+    open; the tool should return shortly after the shell exits instead of
+    blocking until the command timeout waiting for pipe EOF.
+    """
+    start = time.monotonic()
+    result = await shell_tool(Params(command="sleep 30 & echo started", timeout=25))
+    elapsed = time.monotonic() - start
+    assert not result.is_error
+    assert "started" in result.output
+    # Shell exit plus PIPE_DRAIN_GRACE, with slack for slow CI; the old
+    # behavior would block for the full 25s timeout and report an error.
+    assert elapsed < 20
 
 
 async def test_environment_variables(shell_tool: Shell):
@@ -249,6 +267,7 @@ class _FakeProc:
     stdin = _NullStdin()
     stdout = _EmptyStream()
     stderr = _EmptyStream()
+    returncode: int | None = 0
 
     async def wait(self) -> int:
         return 0
@@ -375,12 +394,16 @@ async def test_cancelled_command_kills_process(shell_tool: Shell, monkeypatch: p
             self.stdout = BlockingReadable()
             self.stderr = BlockingReadable()
             self.kill_calls = 0
+            self.returncode: int | None = None
 
         async def wait(self) -> int:
-            return 0
+            while self.returncode is None:
+                await asyncio.sleep(0.01)
+            return self.returncode
 
         async def kill(self) -> None:
             self.kill_calls += 1
+            self.returncode = -9
 
     fake_process = FakeProcess()
 
