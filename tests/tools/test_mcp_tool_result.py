@@ -11,13 +11,23 @@ from kosong.message import ImageURLPart, TextPart
 from kosong.tooling import ToolError, ToolOk
 from pydantic import AnyUrl
 
-from kimi_cli.soul.toolset import MCP_MAX_OUTPUT_CHARS, convert_mcp_tool_result
+from kimi_cli.soul.toolset import (
+    MCP_MAX_OUTPUT_CHARS,
+    convert_mcp_tool_result,
+    sanitize_mcp_input_schema,
+)
 
 
-def _make_result(content: Sequence[mcp.types.ContentBlock], *, is_error: bool = False) -> MagicMock:
+def _make_result(
+    content: Sequence[mcp.types.ContentBlock],
+    *,
+    is_error: bool = False,
+    structured_content: dict[str, object] | None = None,
+) -> MagicMock:
     r = MagicMock()
     r.content = content
     r.is_error = is_error
+    r.structured_content = structured_content
     return r
 
 
@@ -34,6 +44,39 @@ class TestMCPTruncation:
         assert isinstance(out, ToolOk)
         assert len(out.output) == 1
         assert _text(out.output[0]) == "hello"
+
+    def test_structured_content_is_appended_as_json_text(self):
+        result = _make_result(
+            [mcp.types.TextContent(type="text", text="Loaded 3 messages")],
+            structured_content={
+                "items": [{"id": 1, "text": "hello"}, {"id": 2, "text": "world"}],
+                "hasMore": True,
+            },
+        )
+
+        out = convert_mcp_tool_result(result)
+
+        assert isinstance(out, ToolOk)
+        assert len(out.output) == 2
+        assert _text(out.output[0]) == "Loaded 3 messages"
+        structured = _text(out.output[1])
+        assert structured.startswith("Structured content:\n")
+        assert '"items"' in structured
+        assert '"hasMore": true' in structured
+
+    def test_oversized_structured_content_is_omitted_instead_of_truncated(self):
+        result = _make_result(
+            [mcp.types.TextContent(type="text", text="x" * (MCP_MAX_OUTPUT_CHARS - 10))],
+            structured_content={"items": ["y" * 100]},
+        )
+
+        out = convert_mcp_tool_result(result)
+
+        assert isinstance(out, ToolOk)
+        texts = [_text(part) for part in out.output if isinstance(part, TextPart)]
+        assert not any(text.startswith("Structured content:\n") for text in texts[1:])
+        assert any("structured content omitted" in text.lower() for text in texts)
+        assert any("truncated" in text.lower() for text in texts)
 
     def test_text_truncated_at_budget(self):
         big_text = "x" * (MCP_MAX_OUTPUT_CHARS + 5000)
@@ -191,3 +234,81 @@ class TestMCPUnsupportedContent:
         assert len(out.output) == 2
         assert _text(out.output[0]) == "valid"
         assert "unsupported" in _text(out.output[1]).lower()
+
+
+class TestMCPSchemaSanitizer:
+    def test_ref_siblings_are_removed_without_mutating_original(self):
+        schema = {
+            "type": "object",
+            "$defs": {"AssetRef": {"type": "object"}},
+            "properties": {
+                "assetRef": {
+                    "$ref": "#/$defs/AssetRef",
+                    "description": "Unity asset reference",
+                    "title": "Asset reference",
+                }
+            },
+        }
+
+        sanitized = sanitize_mcp_input_schema(schema)
+
+        assert sanitized["properties"]["assetRef"] == {"$ref": "#/$defs/AssetRef"}
+        assert "description" in schema["properties"]["assetRef"]
+
+    def test_ref_validation_siblings_are_preserved_via_all_of(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "assetRef": {
+                    "$ref": "#/$defs/AssetRef",
+                    "description": "Unity asset reference",
+                    "enum": ["a", "b"],
+                    "const": "a",
+                }
+            },
+        }
+
+        sanitized = sanitize_mcp_input_schema(schema)
+
+        assert sanitized["properties"]["assetRef"] == {
+            "enum": ["a", "b"],
+            "const": "a",
+            "allOf": [{"$ref": "#/$defs/AssetRef"}],
+        }
+
+    def test_ref_existing_all_of_is_combined_with_reference(self):
+        schema = {
+            "properties": {
+                "assetRef": {
+                    "$ref": "#/$defs/AssetRef",
+                    "allOf": [{"type": "object", "required": ["id"]}],
+                }
+            }
+        }
+
+        sanitized = sanitize_mcp_input_schema(schema)
+
+        assert sanitized["properties"]["assetRef"] == {
+            "allOf": [
+                {"$ref": "#/$defs/AssetRef"},
+                {"type": "object", "required": ["id"]},
+            ]
+        }
+
+    def test_nested_ref_siblings_are_sanitized_in_arrays(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/AssetRef",
+                        "description": "Unity asset reference",
+                    },
+                }
+            },
+        }
+
+        sanitized = sanitize_mcp_input_schema(schema)
+
+        assert sanitized["properties"]["refs"]["items"] == {"$ref": "#/$defs/AssetRef"}
