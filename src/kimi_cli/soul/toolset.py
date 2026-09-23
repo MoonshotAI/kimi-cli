@@ -506,22 +506,17 @@ class KimiToolset:
                         call_id=tool_call.id,
                     )
                     # --- PostToolUseFailure (fire-and-forget) ---
-                    _hook_task = asyncio.create_task(
-                        self._hook_engine.trigger(
-                            "PostToolUseFailure",
-                            matcher_value=tool_name,
-                            input_data=events.post_tool_use_failure(
-                                session_id=_get_session_id(),
-                                cwd=str(Path.cwd()),
-                                tool_name=tool_name,
-                                tool_input=tool_input_dict,
-                                error=str(e),
-                                tool_call_id=tool_call.id,
-                            ),
-                        )
-                    )
-                    _hook_task.add_done_callback(
-                        lambda t: t.exception() if not t.cancelled() else None
+                    self._hook_engine.fire_and_forget_trigger(
+                        "PostToolUseFailure",
+                        matcher_value=tool_name,
+                        input_data=events.post_tool_use_failure(
+                            session_id=_get_session_id(),
+                            cwd=str(Path.cwd()),
+                            tool_name=tool_name,
+                            tool_input=tool_input_dict,
+                            error=str(e),
+                            tool_call_id=tool_call.id,
+                        ),
                     )
                     from kimi_cli.telemetry import track
 
@@ -574,21 +569,18 @@ class KimiToolset:
                     )
 
                 # --- PostToolUse (fire-and-forget) ---
-                _hook_task = asyncio.create_task(
-                    self._hook_engine.trigger(
-                        "PostToolUse",
-                        matcher_value=tool_name,
-                        input_data=events.post_tool_use(
-                            session_id=_get_session_id(),
-                            cwd=str(Path.cwd()),
-                            tool_name=tool_name,
-                            tool_input=tool_input_dict,
-                            tool_output=str(ret)[:2000],
-                            tool_call_id=tool_call.id,
-                        ),
-                    )
+                self._hook_engine.fire_and_forget_trigger(
+                    "PostToolUse",
+                    matcher_value=tool_name,
+                    input_data=events.post_tool_use(
+                        session_id=_get_session_id(),
+                        cwd=str(Path.cwd()),
+                        tool_name=tool_name,
+                        tool_input=tool_input_dict,
+                        tool_output=str(ret)[:2000],
+                        tool_call_id=tool_call.id,
+                    ),
                 )
-                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
                 return ToolResult(tool_call_id=tool_call.id, return_value=ret)
 

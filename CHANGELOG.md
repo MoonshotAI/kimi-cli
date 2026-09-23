@@ -27,6 +27,7 @@ Only write entries that are worth mentioning to users.
 ## 1.50.0 (2026-09-02)
 
 - Kosong: Stop sending an empty `anthropic-beta` header when no beta features are declared — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject
+- Hooks: Fire `PostToolUse` and `PostToolUseFailure` through `fire_and_forget_trigger` so the hook task keeps a strong reference and failures are logged, instead of a bare `asyncio.create_task` whose handle is dropped
 
 ## 1.49.0 (2026-07-16)
 
