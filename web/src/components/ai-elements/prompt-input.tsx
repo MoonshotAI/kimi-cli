@@ -956,16 +956,20 @@ export const PromptInputTextarea = forwardRef<
     const [isComposing, setIsComposing] = useState(false);
 
     const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
+      // Guard before consumers can select autocomplete options on IME Enter.
+      if (
+        e.key === "Enter" &&
+        (isComposing || e.nativeEvent.isComposing || e.keyCode === 229)
+      ) {
+        return;
+      }
+
       onKeyDown?.(e);
       if (e.defaultPrevented) {
         return;
       }
 
       if (e.key === "Enter") {
-        // WebKit may clear isComposing before keydown; 229 is the IME fallback.
-        if (isComposing || e.nativeEvent.isComposing || e.keyCode === 229) {
-          return;
-        }
         if (e.shiftKey) {
           return;
         }
