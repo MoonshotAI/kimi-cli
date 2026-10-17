@@ -1,10 +1,12 @@
-from typing import Protocol
+import sys
+from typing import Protocol, TextIO, cast
 
-import rich
 from kosong.message import Message
+from rich.console import Console
 
 from kimi_cli.cli import OutputFormat
 from kimi_cli.soul.message import tool_result_to_message
+from kimi_cli.ui.print.output import EncodingSafeStream, safe_print
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
 from kimi_cli.wire.types import (
@@ -33,7 +35,8 @@ def _merge_content(buffer: list[ContentPart], part: ContentPart) -> None:
 
 class TextPrinter(Printer):
     def feed(self, msg: WireMessage) -> None:
-        rich.print(msg)
+        safe_stream = cast(TextIO, EncodingSafeStream(sys.stdout))
+        Console(file=safe_stream).print(msg)
 
     def flush(self) -> None:
         pass
@@ -77,11 +80,11 @@ class JsonPrinter(Printer):
                 self._flush_assistant_message()
                 self._flush_notifications()
                 message = tool_result_to_message(result)
-                print(message.model_dump_json(exclude_none=True), flush=True)
+                safe_print(message.model_dump_json(exclude_none=True))
             case PlanDisplay() as plan:
                 self._flush_assistant_message()
                 self._flush_notifications()
-                print(plan.model_dump_json(exclude_none=True), flush=True)
+                safe_print(plan.model_dump_json(exclude_none=True))
             case _:
                 # ignore other messages
                 pass
@@ -100,14 +103,14 @@ class JsonPrinter(Printer):
             content=self._content_buffer,
             tool_calls=self._tool_call_buffer or None,
         )
-        print(message.model_dump_json(exclude_none=True), flush=True)
+        safe_print(message.model_dump_json(exclude_none=True))
 
         self._content_buffer.clear()
         self._tool_call_buffer.clear()
         self._last_tool_call = None
 
     def _emit_notification(self, notification: Notification) -> None:
-        print(notification.model_dump_json(exclude_none=True), flush=True)
+        safe_print(notification.model_dump_json(exclude_none=True))
 
     def _flush_notifications(self) -> None:
         for notification in self._pending_notifications:
@@ -138,7 +141,7 @@ class FinalOnlyTextPrinter(Printer):
         message = Message(role="assistant", content=self._content_buffer)
         text = message.extract_text()
         if text:
-            print(text, flush=True)
+            safe_print(text)
         self._content_buffer.clear()
 
 
@@ -162,7 +165,7 @@ class FinalOnlyJsonPrinter(Printer):
         text = message.extract_text()
         if text:
             final_message = Message(role="assistant", content=text)
-            print(final_message.model_dump_json(exclude_none=True), flush=True)
+            safe_print(final_message.model_dump_json(exclude_none=True))
         self._content_buffer.clear()
 
 
