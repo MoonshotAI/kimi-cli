@@ -15,7 +15,6 @@ from kosong.chat_provider import (
     ChatProviderError,
 )
 from kosong.message import Message
-from rich import print
 
 from kimi_cli.background.models import is_terminal_status
 from kimi_cli.cli import ExitCode, InputFormat, OutputFormat
@@ -28,6 +27,7 @@ from kimi_cli.soul import (
     run_soul,
 )
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.ui.print.output import safe_rich_print
 from kimi_cli.ui.print.visualize import visualize
 from kimi_cli.utils.logging import logger, open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
@@ -88,7 +88,7 @@ class Print:
                 if command:
                     logger.info("Running agent with command: {command}", command=command)
                     if self.output_format == "text" and not self.final_only:
-                        print(command)
+                        safe_rich_print(command)
                     runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
                     await run_soul(
                         self.soul,
@@ -409,27 +409,27 @@ class Print:
                 command = None
         except LLMNotSet as e:
             logger.exception("LLM not set:")
-            print(str(e))
+            safe_rich_print(str(e))
             return ExitCode.FAILURE
         except LLMNotSupported as e:
             logger.exception("LLM not supported:")
-            print(str(e))
+            safe_rich_print(str(e))
             return ExitCode.FAILURE
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
-            print(str(e))
+            safe_rich_print(str(e))
             return self._classify_provider_error(e)
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
-            print(str(e))
+            safe_rich_print(str(e))
             return ExitCode.FAILURE
         except RunCancelled:
             logger.error("Interrupted by user")
-            print("Interrupted by user")
+            safe_rich_print("Interrupted by user")
             return ExitCode.FAILURE
         except BaseException as e:
             logger.exception("Unknown error:")
-            print(f"Unknown error: {e}")
+            safe_rich_print(f"Unknown error: {e}")
             raise
         finally:
             remove_sigint()
